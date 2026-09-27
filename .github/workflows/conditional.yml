@@ -14,6 +14,9 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # порівнювати з попереднім комітом цієї ж гілки; без цього на push у
+          # develop зміни рахуються відносно main і обидва фільтри дають true
+          base: ${{ github.ref_name }}
           filters: |
             backend:
               - 'backend/**'
