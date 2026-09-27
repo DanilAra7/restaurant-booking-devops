@@ -3,6 +3,7 @@
 // GET    /health
 // GET    /restaurants
 // GET    /restaurants/:id/availability?date=YYYY-MM-DD&time=HH:MM&guests=N
+// GET    /bookings?phone=+380...
 // POST   /bookings        { restaurantId, date, time, guests, name, phone }
 // DELETE /bookings/:id
 
@@ -59,6 +60,9 @@ function createApp(store = createStore()) {
       const query = Object.fromEntries(url.searchParams);
       const tables = booking.findAvailableTables(store, parts[1], query);
       return send(res, 200, { available: tables.length > 0, tables });
+    }
+    if (req.method === 'GET' && url.pathname === '/bookings') {
+      return send(res, 200, booking.findBookingsByPhone(store, url.searchParams.get('phone')));
     }
     if (req.method === 'POST' && url.pathname === '/bookings') {
       const created = booking.createBooking(store, await readJson(req));
