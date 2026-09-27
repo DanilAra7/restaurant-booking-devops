@@ -1,0 +1,39 @@
+name: Booking CI
+
+# Етап 1 індивідуального проєкту: базовий CI — перевірка синтаксису та тести
+# сервісів бронювання при кожному коміті й pull request у main/develop.
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+    paths: ['backend/**', 'frontend/**', '.github/workflows/booking-ci.yml']
+  pull_request:
+    branches: [main, develop]
+    paths: ['backend/**', 'frontend/**', '.github/workflows/booking-ci.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, frontend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit & API tests
+        run: npm test

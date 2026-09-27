@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Бронювання столиків</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Бронювання столика</h1>
+
+    <form id="booking-form" novalidate>
+      <label>Ресторан
+        <select name="restaurantId" id="restaurant"></select>
+      </label>
+      <div class="row">
+        <label>Дата <input type="date" name="date" required></label>
+        <label>Час <input type="time" name="time" step="900" required></label>
+        <label>Гостей <input type="number" name="guests" min="1" max="20" value="2" required></label>
+      </div>
+      <label>Ім'я <input type="text" name="name" autocomplete="name" required></label>
+      <label>Телефон <input type="tel" name="phone" autocomplete="tel" placeholder="+380..." required></label>
+      <div class="actions">
+        <button type="button" id="check">Перевірити наявність</button>
+        <button type="submit">Забронювати</button>
+      </div>
+    </form>
+
+    <p id="message" role="status"></p>
+  </main>
+
+  <script src="validation.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

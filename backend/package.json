@@ -1,0 +1,14 @@
+{
+  "name": "booking-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Сервіс бронювання столиків (етап 1 індивідуального проєкту)",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test",
+    "lint": "node --check src/app.js && node --check src/booking.js && node --check src/store.js && node --check src/server.js"
+  }
+}
