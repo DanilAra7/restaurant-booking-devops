@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { createStore } = require('../src/store');
 const {
-  overlaps, findAvailableTables, createBooking, cancelBooking, BookingError,
+  overlaps, findAvailableTables, createBooking, findBookingsByPhone, cancelBooking, BookingError,
 } = require('../src/booking');
 
 const request = { date: '2026-10-10', time: '19:00', guests: 2 };
@@ -62,6 +62,17 @@ test('некоректні дані відхиляються', () => {
   }
   assert.throws(() => createBooking(store, { restaurantId: 1, ...request, name: ' ', phone: '1' }), (err) => err.code === 'VALIDATION');
   assert.throws(() => createBooking(store, { restaurantId: 99, ...request, ...guest }), (err) => err.code === 'NOT_FOUND');
+});
+
+test('findBookingsByPhone повертає історію гостя в хронологічному порядку', () => {
+  const store = createStore();
+  createBooking(store, { restaurantId: 1, ...request, date: '2026-10-12', ...guest });
+  createBooking(store, { restaurantId: 2, date: '2026-10-11', time: '18:00', guests: 2, ...guest });
+  createBooking(store, { restaurantId: 1, ...request, name: 'Інший', phone: '+380999999999' });
+
+  const history = findBookingsByPhone(store, '+38 (050) 123-45-67');
+  assert.deepStrictEqual(history.map((b) => b.date), ['2026-10-11', '2026-10-12']);
+  assert.throws(() => findBookingsByPhone(store, ''), (err) => err.code === 'VALIDATION');
 });
 
 test('cancelBooking звільняє столик', () => {

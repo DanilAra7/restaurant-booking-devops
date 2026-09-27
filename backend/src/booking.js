@@ -74,6 +74,17 @@ function createBooking(store, { restaurantId, date, time, guests, name, phone })
   return booking;
 }
 
+const normalizePhone = (phone) => String(phone || '').replace(/[^\d+]/g, '');
+
+// історія бронювань гостя за номером телефону, від найближчих
+function findBookingsByPhone(store, phone) {
+  const wanted = normalizePhone(phone);
+  if (!wanted) throw new BookingError('VALIDATION', 'Вкажіть номер телефону');
+  return store.bookings
+    .filter((b) => normalizePhone(b.phone) === wanted)
+    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+}
+
 function cancelBooking(store, bookingId) {
   const index = store.bookings.findIndex((b) => b.id === Number(bookingId));
   if (index === -1) throw new BookingError('NOT_FOUND', 'Бронювання не знайдено');
@@ -87,5 +98,6 @@ module.exports = {
   findRestaurant,
   findAvailableTables,
   createBooking,
+  findBookingsByPhone,
   cancelBooking,
 };
