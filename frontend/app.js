@@ -55,4 +55,9 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
+// не дозволяємо обрати минулу дату (локальна дата користувача, не UTC)
+const today = new Date();
+today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+form.elements.date.min = today.toISOString().slice(0, 10);
+
 loadRestaurants().catch(() => show('API недоступне — запустіть backend (npm start у каталозі backend)', 'error'));
