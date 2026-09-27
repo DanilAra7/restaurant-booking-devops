@@ -81,11 +81,17 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: staging
+    # image-tag містить кілька тегів (по одному на рядок), тому передаємо його
+    # через змінну середовища, а не підставляємо ${{ }} прямо в текст скрипта
+    env:
+      IMAGE_TAGS: ${{ needs.build.outputs.image-tag }}
     steps:
       - name: Deploy to staging
         run: |
           echo "Deploying to staging..."
-          # kubectl set image deployment/app app=${{ needs.build.outputs.image-tag }}
+          echo "Image tags:"
+          echo "$IMAGE_TAGS"
+          # kubectl set image deployment/app app=$(echo "$IMAGE_TAGS" | head -n 1)
 
   # Stage 4: Deploy to Production
   deploy-production:
