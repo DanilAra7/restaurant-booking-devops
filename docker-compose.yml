@@ -1,0 +1,57 @@
+# Локальне середовище індивідуального проєкту (етап 2 — контейнеризація):
+#   db               — PostgreSQL з томом booking_data;
+#   booking-service  — REST API (backend/), доступний лише всередині мережі;
+#   frontend         — Nginx з веб-інтерфейсом (frontend/), проксіює /api/.
+#
+#   docker compose up -d --build        зібрати образи локально й запустити
+#   TAG=main docker compose pull        або взяти готові образи з ghcr.io
+#   docker compose down [-v]            зупинити ([-v] — разом з даними)
+#
+# Паролі для локальної розробки мають значення за замовчуванням; інші значення
+# задаються у файлі .env (див. .env.example), який не потрапляє в git.
+name: restaurant-booking
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-booking}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-booking}
+      POSTGRES_DB: ${DB_NAME:-booking}
+    volumes:
+      - booking_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # $$ — щоб змінні підставив shell контейнера, а не Compose
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  booking-service:
+    build: ./backend
+    image: ghcr.io/danilara7/booking-service:${TAG:-local}
+    environment:
+      PORT: 3000
+      DB_HOST: db
+      DB_USER: ${DB_USER:-booking}
+      DB_PASSWORD: ${DB_PASSWORD:-booking}
+      DB_NAME: ${DB_NAME:-booking}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    image: ghcr.io/danilara7/booking-frontend:${TAG:-local}
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      booking-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  booking_data:

@@ -21,9 +21,9 @@
 
 | Сервіс | Відповідальність | Етап появи |
 | --- | --- | --- |
-| `booking-service` (`backend/`) | каталог ресторанів, доступність, бронювання | 1 (зараз) |
-| `frontend` (`frontend/`) | веб-інтерфейс гостя | 1 (зараз) |
-| `auth-service` | реєстрація, вхід, ролі | 2–3 |
+| `booking-service` (`backend/`) | каталог ресторанів, доступність, бронювання | 1; з етапу 2 — у контейнері з PostgreSQL |
+| `frontend` (`frontend/`) | веб-інтерфейс гостя | 1; з етапу 2 — у контейнері з Nginx |
+| `auth-service` | реєстрація, вхід, ролі | 3 |
 | `restaurant-service` | каталог і адмін-панель (виділяється з booking-service) | 3 |
 | `notification-service` | email/SMS-сповіщення | 3 |
 
@@ -31,7 +31,8 @@
 
 | Категорія | Інструмент за ТЗ ЛР1 | Етап | Стан |
 | --- | --- | --- | --- |
-| CI/CD | GitHub Actions | 1 | базовий CI — `booking-ci.yml` |
+| CI/CD | GitHub Actions | 1 | базовий CI — `booking-ci.yml`; з етапу 2 — `containers.yml` |
+| Контейнеризація | Docker, Docker Compose, GitHub Container Registry | 2 | реалізовано |
 | Оркестрація | Kubernetes (Minikube) | 3 | заплановано |
 | Модульні тести | JUnit/PyTest → для Node.js-стеку: вбудований `node:test` | 1 | реалізовано |
 | API-тести | Postman/Newman | 4 | заплановано (на етапі 1 — базові API-тести на `node:test`) |
@@ -73,3 +74,24 @@ GitHub Actions. Очікуваний результат: репозиторій 
 Для Node.js без етапу компіляції «складання» в базовому CI — це синтаксична
 перевірка всіх модулів (`node --check`); повноцінне складання Docker-образів
 сервісів — етап 2.
+
+## Етап 2 — план з ЛР1 і виконання
+
+Етап 2 за планом ЛР1: «Контейнеризація» — підготувати сервіси до розгортання
+в ізольованому відтворюваному середовищі. Інструменти: Docker, Docker Compose,
+GitHub Container Registry. Очікуваний результат: набір Docker-образів
+мікросервісів у реєстрі, `docker-compose.yml`.
+
+| Робота за планом ЛР1 | Виконання |
+| --- | --- |
+| Написання Dockerfile для кожного мікросервісу | `backend/Dockerfile` (booking-service), `frontend/Dockerfile` (Nginx зі статикою) |
+| Налаштування docker-compose для локальної розробки | `docker-compose.yml`: db (PostgreSQL, том `booking_data`, healthcheck) → booking-service → frontend, залежності з `condition: service_healthy` |
+| Оптимізація образів (multi-stage build) | обидва Dockerfile багатоетапні: тести на етапі build, у runtime — лише потрібні файли; booking-service ≈ 194 МБ проти ≈ 1,58 ГБ в одноетапного образу на `node:20` |
+| Публікація образів у реєстр | `containers.yml`: тест стека в Compose, потім публікація `ghcr.io/danilara7/booking-service` і `booking-frontend` (теги: коміт, гілка, `latest` для main) |
+
+Щоб у Compose-середовищі дані бронювань зберігалися між перезапусками,
+booking-service отримав сховище в PostgreSQL (`backend/src/repo/postgres.js`,
+схема — `backend/db/init.sql`); in-memory сховище лишилося для модульних
+тестів і запуску без Docker. Опис цієї БД у Terraform — етап 4, керування
+паролем через Vault — етап 5; до того пароль задається змінними середовища
+(`.env`, не комітиться).

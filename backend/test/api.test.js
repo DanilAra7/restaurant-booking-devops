@@ -25,7 +25,7 @@ async function call(method, path, body) {
 test('GET /health', async () => {
   const { status, body } = await call('GET', '/health');
   assert.strictEqual(status, 200);
-  assert.deepStrictEqual(body, { status: 'ok' });
+  assert.deepStrictEqual(body, { status: 'ok', storage: 'memory' });
 });
 
 test('GET /restaurants повертає каталог', async () => {

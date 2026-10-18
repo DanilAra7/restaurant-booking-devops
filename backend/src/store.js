@@ -1,5 +1,5 @@
-// In-memory сховище для етапу 1. На наступних етапах буде замінене на БД
-// (PostgreSQL у Kubernetes, описану через Terraform).
+// Початкові дані для in-memory сховища (repo/memory.js). Ті самі ресторани
+// заносить у PostgreSQL скрипт db/init.sql.
 
 function createStore() {
   return {

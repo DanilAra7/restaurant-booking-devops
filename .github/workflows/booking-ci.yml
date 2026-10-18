@@ -32,6 +32,11 @@ jobs:
         with:
           node-version: '20'
 
+      # з етапу 2 backend має залежність (pg); у frontend залежностей немає
+      - name: Install dependencies
+        if: hashFiles(format('{0}/package-lock.json', matrix.service)) != ''
+        run: npm ci
+
       - name: Lint
         run: npm run lint
 
