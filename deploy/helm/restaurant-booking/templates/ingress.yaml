@@ -1,0 +1,80 @@
+{{- if .Values.ingress.enabled -}}
+{{- $ing := .Values.ingress -}}
+{{- $tlsSecret := printf "%s-tls" .Release.Name -}}
+{{- if $ing.tls.enabled }}
+{{- /* самопідписаний сертифікат для локального кластера; при helm upgrade
+       зберігається наявний, щоб браузер не бачив щоразу новий */ -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $tlsSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $tlsSecret }}
+  labels:
+    {{- include "booking.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+data:
+  {{- if $existing }}
+  tls.crt: {{ index $existing.data "tls.crt" }}
+  tls.key: {{ index $existing.data "tls.key" }}
+  {{- else }}
+  {{- $cert := genSelfSignedCert $ing.host nil (list $ing.host) 365 }}
+  tls.crt: {{ $cert.Cert | b64enc }}
+  tls.key: {{ $cert.Key | b64enc }}
+  {{- end }}
+---
+{{- end }}
+# веб-інтерфейс: усе, що не /api
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-web
+  labels:
+    {{- include "booking.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ $ing.className }}
+  {{- if $ing.tls.enabled }}
+  tls:
+    - hosts: [{{ $ing.host | quote }}]
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: {{ $ing.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.frontend.name }}
+                port:
+                  name: http
+---
+# API: /api/<шлях> → booking-service /<шлях> (префікс відкидається)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "booking.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: {{ $ing.className }}
+  {{- if $ing.tls.enabled }}
+  tls:
+    - hosts: [{{ $ing.host | quote }}]
+      secretName: {{ $tlsSecret }}
+  {{- end }}
+  rules:
+    - host: {{ $ing.host | quote }}
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ .Values.bookingService.name }}
+                port:
+                  name: http
+{{- end }}

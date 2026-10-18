@@ -1,0 +1,14 @@
+Restaurant booking is deployed (release {{ .Release.Name }}, images {{ .Values.image.registry }}/*:{{ .Values.image.tag | default .Chart.AppVersion }}).
+
+Status:
+  kubectl get pods,svc,hpa,ingress -l app.kubernetes.io/instance={{ .Release.Name }}
+  helm test {{ .Release.Name }}
+{{- if .Values.ingress.enabled }}
+
+Web UI: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}/   API: /api/
+  (add "<ingress IP> {{ .Values.ingress.host }}" to the hosts file; on minikube with
+   the docker driver run "minikube tunnel" and use 127.0.0.1)
+{{- else }}
+
+Web UI: kubectl port-forward svc/{{ .Values.frontend.name }} 8080:{{ .Values.frontend.port }}  →  http://localhost:8080
+{{- end }}
