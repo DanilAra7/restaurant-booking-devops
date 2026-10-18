@@ -8,8 +8,9 @@
 // DELETE /bookings/:id
 
 const http = require('node:http');
-const { createStore } = require('./store');
-const booking = require('./booking');
+const { BookingError } = require('./booking');
+const { createService } = require('./service');
+const { createMemoryRepo } = require('./repo/memory');
 
 const STATUS_BY_CODE = { VALIDATION: 400, NOT_FOUND: 404, CONFLICT: 409 };
 
@@ -29,14 +30,16 @@ function readJson(req) {
       try {
         resolve(data ? JSON.parse(data) : {});
       } catch {
-        reject(new booking.BookingError('VALIDATION', 'Некоректний JSON'));
+        reject(new BookingError('VALIDATION', 'Некоректний JSON'));
       }
     });
     req.on('error', reject);
   });
 }
 
-function createApp(store = createStore()) {
+function createApp(repo = createMemoryRepo()) {
+  const service = createService(repo);
+
   async function handle(req, res) {
     const url = new URL(req.url, 'http://localhost');
     const parts = url.pathname.split('/').filter(Boolean);
@@ -49,27 +52,31 @@ function createApp(store = createStore()) {
       });
       return res.end();
     }
+    // health перевіряє і сховище: без БД сервіс не готовий (503) — на це
+    // орієнтуються healthcheck у Docker і depends_on: service_healthy
     if (req.method === 'GET' && url.pathname === '/health') {
-      return send(res, 200, { status: 'ok' });
+      try {
+        return send(res, 200, { status: 'ok', storage: await service.health() });
+      } catch {
+        return send(res, 503, { status: 'unavailable', storage: repo.kind });
+      }
     }
     if (req.method === 'GET' && url.pathname === '/restaurants') {
-      const list = store.restaurants.map(({ tables, ...r }) => ({ ...r, tables: tables.length }));
-      return send(res, 200, list);
+      return send(res, 200, await service.listRestaurants());
     }
     if (req.method === 'GET' && parts[0] === 'restaurants' && parts[2] === 'availability' && parts.length === 3) {
       const query = Object.fromEntries(url.searchParams);
-      const tables = booking.findAvailableTables(store, parts[1], query);
+      const tables = await service.findAvailableTables(parts[1], query);
       return send(res, 200, { available: tables.length > 0, tables });
     }
     if (req.method === 'GET' && url.pathname === '/bookings') {
-      return send(res, 200, booking.findBookingsByPhone(store, url.searchParams.get('phone')));
+      return send(res, 200, await service.findBookingsByPhone(url.searchParams.get('phone')));
     }
     if (req.method === 'POST' && url.pathname === '/bookings') {
-      const created = booking.createBooking(store, await readJson(req));
-      return send(res, 201, created);
+      return send(res, 201, await service.createBooking(await readJson(req)));
     }
     if (req.method === 'DELETE' && parts[0] === 'bookings' && parts.length === 2) {
-      return send(res, 200, booking.cancelBooking(store, parts[1]));
+      return send(res, 200, await service.cancelBooking(parts[1]));
     }
     return send(res, 404, { error: 'Маршрут не знайдено' });
   }
@@ -77,6 +84,7 @@ function createApp(store = createStore()) {
   return http.createServer((req, res) => {
     handle(req, res).catch((err) => {
       const status = STATUS_BY_CODE[err.code] || 500;
+      if (status === 500) console.error(err);
       send(res, status, { error: status === 500 ? 'Внутрішня помилка сервера' : err.message });
     });
   });
