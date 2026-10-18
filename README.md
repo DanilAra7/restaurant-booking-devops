@@ -1,8 +1,13 @@
 # restaurant-booking-devops
 
-Лабораторна робота №2 з дисципліни «Основи DevOps» — розширений конвеєр
-CI/CD у GitHub Actions, та етап 1 індивідуального проєкту «Система
-онлайн-бронювання столиків у ресторанах».
+Індивідуальний проєкт з дисципліни «Основи DevOps» — «Система
+онлайн-бронювання столиків у ресторанах» (план етапів — звіт ЛР1):
+
+1. етап 1 (ЛР2) — репозиторій, структура сервісів, ТЗ, гілкова стратегія,
+   базовий CI; тут же завдання ЛР2 — розширений конвеєр CI/CD у GitHub Actions;
+2. етап 2 (ЛР3) — контейнеризація: Dockerfile для кожного сервісу
+   (multi-stage), Docker Compose для локальної розробки, PostgreSQL,
+   публікація образів у ghcr.io.
 
 ## Структура
 
@@ -14,15 +19,33 @@ CI/CD у GitHub Actions, та етап 1 індивідуального проє
 | `.github/workflows/deploy-template.yml`, `call-deploy.yml` | 1.3 — reusable workflow |
 | `.github/workflows/conditional.yml` | 1.4 — завдання залежно від змінених файлів |
 | `.github/workflows/booking-ci.yml` | базовий CI індивідуального проєкту |
-| `backend/` | booking-service (REST API бронювання) |
-| `frontend/` | веб-інтерфейс бронювання |
+| `.github/workflows/containers.yml` | етап 2 — збірка образів, тест стека в Compose, публікація в ghcr.io |
+| `backend/` | booking-service (REST API бронювання, PostgreSQL), `Dockerfile`, `db/init.sql` |
+| `frontend/` | веб-інтерфейс бронювання, `nginx.conf`, `Dockerfile` |
+| `docker-compose.yml` | локальне середовище: db + booking-service + frontend |
+| `scripts/smoke-test.sh` | димовий тест розгорнутого стека |
 | `docs/` | ТЗ та гілкова стратегія |
 
-## Локальний запуск
+## Запуск у Docker (етап 2)
+
+```bash
+docker compose up -d --build --wait   # зібрати образи й дочекатися готовності
+./scripts/smoke-test.sh               # перевірити стек через Nginx
+docker compose down                   # зупинити (дані лишаються в томі booking_data)
+docker compose down -v                # зупинити й видалити дані
+```
+
+Веб-інтерфейс — http://localhost:8080, API — http://localhost:8080/api/.
+Готові образи з реєстру замість локальної збірки:
+`TAG=main docker compose pull && TAG=main docker compose up -d --no-build`.
+Паролі БД за замовчуванням — лише для локальної розробки; інші значення
+задаються у `.env` (зразок — `.env.example`).
+
+## Запуск без Docker
 
 ```bash
 npm test                 # усі тести репозиторію
-cd backend && npm start  # API на http://localhost:3000
+cd backend && npm start  # API на http://localhost:3000 (дані в пам'яті)
 ```
 
 Потім відкрийте `frontend/index.html` у браузері.
