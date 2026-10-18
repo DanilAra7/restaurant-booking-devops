@@ -1,0 +1,25 @@
+# helm test: під перевіряє, що API готове (з БД) і віддає каталог ресторанів
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Release.Name }}-test-api
+  labels:
+    {{- include "booking.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test
+      image: busybox:1.37
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          base=http://{{ .Values.bookingService.name }}:{{ .Values.bookingService.port }}
+          wget -qO- "$base/health" | grep '"storage":"postgres"'
+          wget -qO- "$base/restaurants" | grep 'Trattoria Roma'
+          wget -qO- http://{{ .Values.frontend.name }}/api/health | grep '"status":"ok"'
+          echo "API, database and frontend proxy are OK"

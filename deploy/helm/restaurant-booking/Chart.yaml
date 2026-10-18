@@ -1,0 +1,10 @@
+apiVersion: v2
+name: restaurant-booking
+description: Система онлайн-бронювання столиків — booking-service, веб-інтерфейс і PostgreSQL у Kubernetes (етап 3)
+type: application
+version: 0.1.0
+# версія застосунку = тег образів у ghcr.io за замовчуванням (див. values.yaml → image.tag)
+appVersion: "main"
+home: https://github.com/DanilAra7/restaurant-booking-devops
+maintainers:
+  - name: DanilAra7
