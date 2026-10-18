@@ -1,8 +1,8 @@
 {
   "name": "booking-frontend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Веб-інтерфейс бронювання столиків (етап 1 індивідуального проєкту)",
+  "description": "Веб-інтерфейс бронювання столиків (індивідуальний проєкт, етапи 1–2)",
   "scripts": {
     "test": "node --test",
     "lint": "node --check validation.js && node --check app.js"

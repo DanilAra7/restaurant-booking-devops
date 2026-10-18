@@ -42,3 +42,33 @@ input, select, button {
 
 #message.error { color: #b00020; }
 #message.ok { color: #1b5e20; }
+
+h2 {
+  margin-top: 28px;
+  font-size: 18px;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+}
+
+.inline input {
+  flex: 1;
+}
+
+#bookings {
+  list-style: none;
+  padding: 0;
+}
+
+#bookings li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  background: #f5f3ef;
+  border-radius: 6px;
+}
