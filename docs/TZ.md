@@ -21,11 +21,17 @@
 
 | Сервіс | Відповідальність | Етап появи |
 | --- | --- | --- |
-| `booking-service` (`backend/`) | каталог ресторанів, доступність, бронювання | 1; з етапу 2 — у контейнері з PostgreSQL |
-| `frontend` (`frontend/`) | веб-інтерфейс гостя | 1; з етапу 2 — у контейнері з Nginx |
-| `auth-service` | реєстрація, вхід, ролі | 3 |
-| `restaurant-service` | каталог і адмін-панель (виділяється з booking-service) | 3 |
-| `notification-service` | email/SMS-сповіщення | 3 |
+| `booking-service` (`backend/`) | каталог ресторанів, доступність, бронювання | 1; етап 2 — контейнер і PostgreSQL; етап 3 — Kubernetes з HPA |
+| `frontend` (`frontend/`) | веб-інтерфейс гостя | 1; етап 2 — контейнер з Nginx; етап 3 — Kubernetes за Ingress |
+| `auth-service` | реєстрація, вхід, ролі | наступні ітерації розробки |
+| `restaurant-service` | каталог і адмін-панель (виділяється з booking-service) | наступні ітерації розробки |
+| `notification-service` | email/SMS-сповіщення | наступні ітерації розробки |
+
+План ЛР1 розбиває на етапи DevOps-процес (репозиторій і CI, контейнеризація,
+оркестрація, тести й IaC, моніторинг і секрети) і не відводить окремого етапу
+під розробку решти сервісів. Тому етапи виконуються на двох наявних сервісах,
+а інфраструктура будується з розрахунком на додавання нових: у Docker Compose
+і Helm-чарті новий сервіс — це ще один блок сервісу з власним образом.
 
 ## DevOps-інструменти (з ТЗ ЛР1)
 
@@ -33,7 +39,7 @@
 | --- | --- | --- | --- |
 | CI/CD | GitHub Actions | 1 | базовий CI — `booking-ci.yml`; з етапу 2 — `containers.yml` |
 | Контейнеризація | Docker, Docker Compose, GitHub Container Registry | 2 | реалізовано |
-| Оркестрація | Kubernetes (Minikube) | 3 | заплановано |
+| Оркестрація | Kubernetes (Minikube), Helm | 3 | реалізовано: `deploy/helm/restaurant-booking` |
 | Модульні тести | JUnit/PyTest → для Node.js-стеку: вбудований `node:test` | 1 | реалізовано |
 | API-тести | Postman/Newman | 4 | заплановано (на етапі 1 — базові API-тести на `node:test`) |
 | E2E-тести | Selenium WebDriver | 4 | заплановано |
@@ -95,3 +101,22 @@ booking-service отримав сховище в PostgreSQL (`backend/src/repo/p
 тестів і запуску без Docker. Опис цієї БД у Terraform — етап 4, керування
 паролем через Vault — етап 5; до того пароль задається змінними середовища
 (`.env`, не комітиться).
+
+## Етап 3 — план з ЛР1 і виконання
+
+Етап 3 за планом ЛР1: «Оркестрація» — забезпечити автоматичне розгортання,
+масштабування та відмовостійкість. Інструменти: Kubernetes, Minikube, Helm.
+Очікуваний результат: застосунок, розгорнутий у Kubernetes-кластері з
+автомасштабуванням.
+
+| Робота за планом ЛР1 | Виконання |
+| --- | --- |
+| Написання Kubernetes-маніфестів (Deployment, Service, Ingress) | Helm-чарт `deploy/helm/restaurant-booking`: Deployment і Service для booking-service та frontend, StatefulSet з томом і Secret для PostgreSQL, Ingress з TLS для `booking.local` |
+| Розгортання в тестовому кластері | локально — Minikube; у CI (`kubernetes.yml`) — кластер kind на кожну зміну: встановлення чарта, `helm test`, димовий тест, перевірка збереження даних |
+| Налаштування Horizontal Pod Autoscaler для сервісу бронювання | HPA booking-service: 2–6 реплік, ціль — 60 % CPU від requests; перевірено навантажувальним тестом |
+
+Відмовостійкість забезпечують кілька реплік сервісів, readiness/liveness-проби
+(booking-service не готовий без БД, але не перезапускається через її
+недоступність — окремий `/health/live`), rolling update без зменшення кількості
+робочих подів і PersistentVolumeClaim для даних PostgreSQL. Пароль БД
+генерується Helm і зберігається в Secret (до переходу на Vault на етапі 5).

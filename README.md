@@ -7,7 +7,9 @@
    базовий CI; тут же завдання ЛР2 — розширений конвеєр CI/CD у GitHub Actions;
 2. етап 2 (ЛР3) — контейнеризація: Dockerfile для кожного сервісу
    (multi-stage), Docker Compose для локальної розробки, PostgreSQL,
-   публікація образів у ghcr.io.
+   публікація образів у ghcr.io;
+3. етап 3 (ЛР4) — оркестрація: Helm-чарт для Kubernetes (Deployment, Service,
+   StatefulSet, Ingress з TLS, HPA), розгортання в Minikube і в kind у CI.
 
 ## Структура
 
@@ -23,6 +25,8 @@
 | `backend/` | booking-service (REST API бронювання, PostgreSQL), `Dockerfile`, `db/init.sql` |
 | `frontend/` | веб-інтерфейс бронювання, `nginx.conf`, `Dockerfile` |
 | `docker-compose.yml` | локальне середовище: db + booking-service + frontend |
+| `deploy/helm/restaurant-booking/` | Helm-чарт для Kubernetes (етап 3) |
+| `.github/workflows/kubernetes.yml` | етап 3 — lint чарта, розгортання в kind, helm test, димовий тест |
 | `scripts/smoke-test.sh` | димовий тест розгорнутого стека |
 | `docs/` | ТЗ та гілкова стратегія |
 
@@ -40,6 +44,23 @@ docker compose down -v                # зупинити й видалити д�
 `TAG=main docker compose pull && TAG=main docker compose up -d --no-build`.
 Паролі БД за замовчуванням — лише для локальної розробки; інші значення
 задаються у `.env` (зразок — `.env.example`).
+
+## Розгортання в Kubernetes (етап 3)
+
+```bash
+minikube start --cpus=4 --memory=4096
+minikube addons enable ingress
+minikube addons enable metrics-server
+helm install booking deploy/helm/restaurant-booking   # образи :main з ghcr.io
+helm test booking
+kubectl get pods,svc,hpa,ingress
+```
+
+Ingress обслуговує `https://booking.local/` (веб-інтерфейс) і
+`https://booking.local/api/` (API) із самопідписаним сертифікатом. На minikube
+з драйвером docker у Windows потрібен `minikube tunnel` і запис
+`127.0.0.1 booking.local` у файлі hosts. Тег образів для відтворюваного
+розгортання — `--set image.tag=<sha коміту>`.
 
 ## Запуск без Docker
 

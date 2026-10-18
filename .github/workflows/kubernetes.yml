@@ -1,0 +1,95 @@
+name: Kubernetes
+
+# Етап 3 індивідуального проєкту: перевірка Helm-чарта і розгортання всього
+# застосунку в тестовому кластері Kubernetes (kind) на кожну зміну.
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+    paths: ['deploy/**', 'backend/**', 'frontend/**', 'scripts/**', '.github/workflows/kubernetes.yml']
+  pull_request:
+    branches: [main, develop]
+    paths: ['deploy/**', 'backend/**', 'frontend/**', 'scripts/**', '.github/workflows/kubernetes.yml']
+
+permissions:
+  contents: read
+
+env:
+  CHART: deploy/helm/restaurant-booking
+
+jobs:
+  # Stage 1: статична перевірка чарта
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.20.0
+
+      - name: Helm lint
+        run: helm lint "$CHART"
+
+      - name: Render manifests
+        run: helm template booking "$CHART" > /tmp/manifests.yaml && grep -c '^kind:' /tmp/manifests.yaml
+
+      # init.sql у чарті — копія backend/db/init.sql (Helm не читає файли поза чартом)
+      - name: init.sql is in sync with backend
+        run: diff backend/db/init.sql "$CHART/files/init.sql"
+
+  # Stage 2: розгортання в кластері kind з образами, зібраними з цього коміту
+  deploy-test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.20.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: booking
+
+      - name: Build images and load them into kind
+        run: |
+          docker build -t ghcr.io/danilara7/booking-service:ci backend
+          docker build -t ghcr.io/danilara7/booking-frontend:ci frontend
+          kind load docker-image --name booking ghcr.io/danilara7/booking-service:ci ghcr.io/danilara7/booking-frontend:ci
+
+      # у kind немає контролера Ingress і metrics-server — їх перевіряє minikube локально
+      - name: Install chart
+        run: |
+          helm install booking "$CHART" --wait --timeout 5m \
+            --set image.tag=ci --set image.pullPolicy=Never \
+            --set ingress.enabled=false --set bookingService.autoscaling.enabled=false
+          kubectl get pods,svc,pvc
+
+      - name: Helm test
+        run: helm test booking --logs
+
+      - name: Smoke test through the frontend Service
+        run: |
+          kubectl port-forward svc/booking-frontend 8080:80 &
+          sleep 3
+          ./scripts/smoke-test.sh
+
+      - name: Data survives a pod restart (PersistentVolumeClaim)
+        run: |
+          curl -fsS -X POST http://localhost:8080/api/bookings -H 'Content-Type: application/json' \
+            -d '{"restaurantId":1,"date":"2030-02-01","time":"18:00","guests":2,"name":"Persist","phone":"+380500000002"}'
+          kubectl delete pod booking-db-0
+          kubectl wait --for=condition=Ready pod/booking-db-0 --timeout=120s
+          kubectl rollout status deployment/booking-service
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=booking-service --timeout=120s
+          curl -fsS 'http://localhost:8080/api/bookings?phone=%2B380500000002' | grep -q Persist
+          echo "booking is still there after the database pod was recreated"
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get all
+          kubectl describe pods
+          kubectl logs -l app.kubernetes.io/part-of=restaurant-booking --all-containers --tail=50
