@@ -18,7 +18,8 @@ bookingService:
       cpu: 50m
       memory: 64Mi
     limits:
-      cpu: 250m
+      # 250m дроселювало Node.js під навантаженням так, що liveness-проба не встигала
+      cpu: 500m
       memory: 128Mi
   # HPA: сервіс бронювання навантажений нерівномірно (вечори, вихідні) — ТЗ ЛР1
   autoscaling:
