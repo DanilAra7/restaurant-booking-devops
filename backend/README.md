@@ -27,7 +27,8 @@ HEALTHCHECK на `/health`.
 
 | Метод | Шлях | Опис |
 | --- | --- | --- |
-| GET | `/health` | стан сервісу й сховища (503, якщо БД недоступна) |
+| GET | `/health` | готовність: стан сервісу й сховища (503, якщо БД недоступна) |
+| GET | `/health/live` | процес живий (для livenessProbe; від БД не залежить) |
 | GET | `/restaurants` | каталог ресторанів |
 | GET | `/restaurants/:id/availability?date&time&guests` | вільні столики |
 | GET | `/bookings?phone=` | історія бронювань гостя |

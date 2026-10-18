@@ -1,6 +1,7 @@
 // REST API сервісу бронювання на вбудованому модулі http (без фреймворків).
 //
-// GET    /health
+// GET    /health          готовність: сервіс і сховище (readiness)
+// GET    /health/live     процес живий (liveness)
 // GET    /restaurants
 // GET    /restaurants/:id/availability?date=YYYY-MM-DD&time=HH:MM&guests=N
 // GET    /bookings?phone=+380...
@@ -52,8 +53,13 @@ function createApp(repo = createMemoryRepo()) {
       });
       return res.end();
     }
+    // liveness не залежить від БД: недоступна база — привід не надсилати
+    // трафік (readiness), а не перезапускати контейнер
+    if (req.method === 'GET' && url.pathname === '/health/live') {
+      return send(res, 200, { status: 'ok' });
+    }
     // health перевіряє і сховище: без БД сервіс не готовий (503) — на це
-    // орієнтуються healthcheck у Docker і depends_on: service_healthy
+    // орієнтуються healthcheck у Docker, depends_on: service_healthy і readinessProbe
     if (req.method === 'GET' && url.pathname === '/health') {
       try {
         return send(res, 200, { status: 'ok', storage: await service.health() });

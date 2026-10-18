@@ -28,6 +28,12 @@ test('GET /health', async () => {
   assert.deepStrictEqual(body, { status: 'ok', storage: 'memory' });
 });
 
+test('GET /health/live не залежить від сховища', async () => {
+  const { status, body } = await call('GET', '/health/live');
+  assert.strictEqual(status, 200);
+  assert.deepStrictEqual(body, { status: 'ok' });
+});
+
 test('GET /restaurants повертає каталог', async () => {
   const { status, body } = await call('GET', '/restaurants');
   assert.strictEqual(status, 200);

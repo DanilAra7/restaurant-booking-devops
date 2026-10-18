@@ -1,0 +1,65 @@
+# Значення за замовчуванням для локального кластера (minikube).
+# Образи — з GitHub Container Registry, їх публікує робочий процес containers.yml.
+
+image:
+  registry: ghcr.io/danilara7
+  # порожньо — береться appVersion з Chart.yaml (main); для відтворюваного
+  # розгортання задається тег коміту: --set image.tag=<sha>
+  tag: ""
+  pullPolicy: Always
+
+bookingService:
+  name: booking-service          # ім'я Service: на нього проксіює nginx фронтенду
+  image: booking-service
+  replicaCount: 2
+  port: 3000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+  # HPA: сервіс бронювання навантажений нерівномірно (вечори, вихідні) — ТЗ ЛР1
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 60
+
+frontend:
+  name: booking-frontend
+  image: booking-frontend
+  replicaCount: 2
+  port: 80
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+postgresql:
+  name: booking-db
+  image: postgres:15-alpine
+  database: booking
+  username: booking
+  # порожньо — пароль генерується при першому встановленні й зберігається в Secret
+  password: ""
+  storage: 1Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: booking.local
+  # завершення TLS на Ingress; сертифікат самопідписаний (генерує Helm)
+  tls:
+    enabled: true
