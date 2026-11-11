@@ -1,0 +1,99 @@
+name: Infrastructure (Terraform)
+
+# Етап 4 індивідуального проєкту: інфраструктура як код (infra/terraform).
+#   validate — форматування й синтаксис конфігурації;
+#   apply    — повний цикл init → apply → перевірка → plan без змін → destroy
+#              у тимчасовому кластері kind (середовище dev).
+on:
+  push:
+    branches: [main, develop, 'feature/**']
+    paths: ['infra/**', 'deploy/**', '.github/workflows/infrastructure.yml']
+  pull_request:
+    branches: [main, develop]
+    paths: ['infra/**', 'deploy/**', '.github/workflows/infrastructure.yml']
+
+permissions:
+  contents: read
+
+env:
+  TF_DIR: infra/terraform
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.x"
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      # без кластера: backend не ініціалізується; робочий простір dev,
+      # бо в default конфігурація навмисно не застосовується
+      - name: terraform validate
+        run: |
+          terraform init -backend=false -input=false
+          TF_WORKSPACE=dev terraform validate
+
+  apply:
+    needs: validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.x"
+          terraform_wrapper: false
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: booking
+
+      - name: Build images from this commit and load them into kind
+        working-directory: .
+        run: |
+          docker build -t ghcr.io/danilara7/booking-service:ci backend
+          docker build -t ghcr.io/danilara7/booking-frontend:ci frontend
+          kind load docker-image --name booking ghcr.io/danilara7/booking-service:ci ghcr.io/danilara7/booking-frontend:ci
+
+      # стан — у Secret кластера kind (backend "kubernetes")
+      - name: terraform init
+        run: terraform init -input=false
+
+      - name: terraform apply (dev)
+        run: |
+          terraform workspace new dev
+          terraform apply -auto-approve -input=false \
+            -var kube_context=kind-booking -var image_tag=ci -var image_pull_policy=Never -var ingress_enabled=false
+
+      - name: Check the environment
+        run: |
+          kubectl get ns,quota,limitrange -n booking-dev
+          kubectl get pods,svc,pvc -n booking-dev
+          helm test booking -n booking-dev --logs
+
+      # повторний plan після apply не повинен мати змін (код = кластер)
+      - name: No drift after apply
+        run: |
+          terraform plan -detailed-exitcode -input=false \
+            -var kube_context=kind-booking -var image_tag=ci -var image_pull_policy=Never -var ingress_enabled=false
+
+      - name: terraform destroy
+        if: always()
+        run: |
+          terraform destroy -auto-approve -input=false \
+            -var kube_context=kind-booking -var image_tag=ci -var image_pull_policy=Never -var ingress_enabled=false
+          kubectl get ns booking-dev && exit 1 || echo "namespace booking-dev removed"
