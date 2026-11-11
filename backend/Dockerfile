@@ -18,7 +18,7 @@ COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/src ./src
 USER node
-EXPOSE 3000
+EXPOSE 3000 9464
 # /health відповідає 503, поки недоступна база даних
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- http://127.0.0.1:3000/health || exit 1

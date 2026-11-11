@@ -1,0 +1,16 @@
+---
+# код отримувача — у ConfigMap; після його зміни под треба перезапустити
+- name: Restart alert receiver
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig }}"
+    context: "{{ kube_context }}"
+    kind: Deployment
+    name: alert-receiver
+    namespace: "{{ monitoring_namespace }}"
+    state: patched
+    definition:
+      spec:
+        template:
+          metadata:
+            annotations:
+              kubectl.kubernetes.io/restartedAt: "{{ now(utc=true).isoformat() }}"

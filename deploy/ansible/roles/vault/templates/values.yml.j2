@@ -1,0 +1,22 @@
+# {{ ansible_managed }}
+# Vault у промисловому режимі: один сервер (standalone), дані — у файловому
+# сховищі на PersistentVolume, тож секрети переживають перезапуск пода.
+# Після кожного перезапуску сервер запечатаний — розпечатує роль vault.
+server:
+  standalone:
+    enabled: true
+  dataStorage:
+    enabled: true
+    size: {{ vault_storage }}
+  service:
+    type: NodePort
+    nodePort: {{ vault_node_port }}
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+ui:
+  enabled: true
+# секрети доставляє Ansible (роль secrets), Agent Injector не потрібен;
+# у кластері вже працює injector навчального Vault з ЛР5
+injector:
+  enabled: false

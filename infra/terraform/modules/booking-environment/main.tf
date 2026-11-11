@@ -86,7 +86,16 @@ resource "helm_release" "booking" {
       enabled = var.ingress_enabled
       host    = var.settings.host
     }
+    monitoring = {
+      enabled = var.monitoring_enabled
+    }
   })]
+
+  # пароль БД не потрапляє у values і план у відкритому вигляді
+  set_sensitive = var.db_password == null ? [] : [{
+    name  = "postgresql.password"
+    value = var.db_password
+  }]
 
   depends_on = [kubernetes_resource_quota_v1.env, kubernetes_limit_range_v1.env]
 }

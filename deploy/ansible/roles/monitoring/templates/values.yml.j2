@@ -1,0 +1,70 @@
+# {{ ansible_managed }}
+# kube-prometheus-stack: Prometheus Operator, Prometheus, Alertmanager, Grafana,
+# node-exporter, kube-state-metrics. ServiceMonitor, правила сповіщень і дашборд
+# сервісу бронювання постачає Helm-чарт застосунку (monitoring.enabled).
+
+# компоненти площини керування minikube слухають лише 127.0.0.1 — їх не опитуємо,
+# інакше постійно спрацьовували б сповіщення TargetDown
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeEtcd: { enabled: false }
+kubeProxy: { enabled: false }
+
+prometheus:
+  prometheusSpec:
+    retention: {{ prometheus_retention }}
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 1Gi }
+{% if monitoring_ingress_enabled %}
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: ["{{ prometheus_host }}"]
+{% endif %}
+
+alertmanager:
+  config:
+    route:
+      group_by: [alertname, namespace]
+      group_wait: 30s
+      group_interval: 2m
+      repeat_interval: 4h
+      receiver: "null"
+      routes:
+        # сповіщення сервісу бронювання — на webhook (журнал alert-receiver)
+        - matchers: ['service="booking"']
+          receiver: booking-webhook
+    receivers:
+      - name: "null"
+      - name: booking-webhook
+        webhook_configs:
+          - url: http://alert-receiver.{{ monitoring_namespace }}.svc:8080/
+            send_resolved: true
+{% if monitoring_ingress_enabled %}
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: ["{{ alertmanager_host }}"]
+{% endif %}
+
+grafana:
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsTimezone: browser
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      # дашборди застосунку лежать у просторах імен середовищ
+      searchNamespace: ALL
+{% if monitoring_ingress_enabled %}
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: ["{{ grafana_host }}"]
+{% endif %}

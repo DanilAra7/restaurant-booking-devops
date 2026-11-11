@@ -38,10 +38,12 @@ locals {
 module "booking" {
   source = "./modules/booking-environment"
 
-  environment       = terraform.workspace
-  settings          = lookup(local.environments, terraform.workspace, null)
-  chart_path        = "${path.root}/../../deploy/helm/restaurant-booking"
-  image_tag         = var.image_tag
-  image_pull_policy = var.image_pull_policy
-  ingress_enabled   = var.ingress_enabled
+  environment        = terraform.workspace
+  settings           = lookup(local.environments, terraform.workspace, null)
+  chart_path         = "${path.root}/../../deploy/helm/restaurant-booking"
+  image_tag          = var.image_tag
+  image_pull_policy  = var.image_pull_policy
+  ingress_enabled    = var.ingress_enabled
+  monitoring_enabled = var.monitoring_enabled
+  db_password        = var.db_password
 }

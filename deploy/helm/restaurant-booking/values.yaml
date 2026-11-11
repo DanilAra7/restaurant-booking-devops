@@ -13,6 +13,7 @@ bookingService:
   image: booking-service
   replicaCount: 2
   port: 3000
+  metricsPort: 9464              # /metrics для Prometheus (окремий порт, не за Ingress)
   resources:
     requests:
       cpu: 50m
@@ -64,3 +65,18 @@ ingress:
   # завершення TLS на Ingress; сертифікат самопідписаний (генерує Helm)
   tls:
     enabled: true
+
+# Етап 5: моніторинг. Потрібен kube-prometheus-stack (CRD ServiceMonitor і
+# PrometheusRule, Grafana із sidecar дашбордів); без CRD ресурси не створюються.
+monitoring:
+  enabled: false
+  # мітка, за якою Prometheus з kube-prometheus-stack обирає ServiceMonitor/PrometheusRule
+  release: monitoring
+  scrapeInterval: 15s
+  alerts:
+    # частка відповідей 5xx, за якої спрацьовує BookingHighErrorRate
+    errorRatio: 0.05
+    # 95-й перцентиль часу відповіді, с
+    latencyP95: 0.5
+    # частка конфліктів серед спроб бронювання (немає вільних столиків)
+    conflictRatio: 0.5

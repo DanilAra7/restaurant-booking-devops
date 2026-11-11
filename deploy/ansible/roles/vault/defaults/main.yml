@@ -1,0 +1,11 @@
+---
+vault_namespace: vault
+# не «vault»: у кластері вже є навчальний Vault з ЛР5, а ClusterRoleBinding —
+# ресурс рівня кластера з іменем від назви релізу
+vault_release: booking-vault
+vault_chart_version: 0.34.1
+vault_node_port: 30820
+vault_storage: 1Gi
+# політика для розгортання: читання й запис лише секретів проєкту
+vault_deploy_policy: booking-deploy
+vault_deploy_role: ansible-deploy

@@ -12,6 +12,7 @@ const http = require('node:http');
 const { BookingError } = require('./booking');
 const { createService } = require('./service');
 const { createMemoryRepo } = require('./repo/memory');
+const { createMetrics } = require('./metrics');
 
 const STATUS_BY_CODE = { VALIDATION: 400, NOT_FOUND: 404, CONFLICT: 409 };
 
@@ -38,7 +39,7 @@ function readJson(req) {
   });
 }
 
-function createApp(repo = createMemoryRepo()) {
+function createApp(repo = createMemoryRepo(), metrics = createMetrics()) {
   const service = createService(repo);
 
   async function handle(req, res) {
@@ -87,13 +88,33 @@ function createApp(repo = createMemoryRepo()) {
     return send(res, 404, { error: 'Маршрут не знайдено' });
   }
 
-  return http.createServer((req, res) => {
+  const server = http.createServer((req, res) => {
+    const started = process.hrtime.bigint();
+    res.on('finish', () => {
+      const seconds = Number(process.hrtime.bigint() - started) / 1e9;
+      metrics.observe(req.method, new URL(req.url, 'http://localhost').pathname, res.statusCode, seconds);
+    });
     handle(req, res).catch((err) => {
       const status = STATUS_BY_CODE[err.code] || 500;
       if (status === 500) console.error(err);
       send(res, status, { error: status === 500 ? 'Внутрішня помилка сервера' : err.message });
     });
   });
+  server.metrics = metrics;
+  return server;
 }
 
-module.exports = { createApp };
+// окремий сервер для Prometheus (порт METRICS_PORT): /metrics не потрапляє в
+// публічний API за Ingress, його бачить лише Prometheus усередині кластера
+function createMetricsServer(metrics) {
+  return http.createServer(async (req, res) => {
+    if (req.method === 'GET' && req.url === '/metrics') {
+      res.writeHead(200, { 'Content-Type': metrics.registry.contentType });
+      return res.end(await metrics.registry.metrics());
+    }
+    res.writeHead(404);
+    res.end();
+  });
+}
+
+module.exports = { createApp, createMetricsServer };

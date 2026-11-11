@@ -1,0 +1,3 @@
+---
+# корінь репозиторію: deploy/ansible → ../..
+booking_app_repo_root: "{{ playbook_dir }}/../.."
