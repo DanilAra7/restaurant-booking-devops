@@ -1,0 +1,26 @@
+---
+kubeconfig: "{{ '~/.kube/config' | expanduser }}"
+kube_context: kind-booking
+# IP контейнера-вузла kind передається з робочого процесу: -e node_address=...
+node_address: 127.0.0.1
+
+booking_environment: staging
+booking_namespace: booking-staging
+# образи, зібрані з поточного коміту й завантажені в kind
+image_tag: ci
+image_pull_policy: Never
+# у kind немає контролера Ingress — перевірка лише всередині кластера
+ingress_enabled: false
+booking_host: staging.booking.local
+
+vault_addr: "http://{{ node_address }}:30820"
+vault_init_file: "{{ '~/.vault/booking-vault-init.json' | expanduser }}"
+
+monitoring_namespace: monitoring
+monitoring_ingress_enabled: false
+grafana_host: grafana.booking.local
+prometheus_host: prometheus.booking.local
+alertmanager_host: alerts.booking.local
+prometheus_retention: 1d
+
+verify_ingress: false

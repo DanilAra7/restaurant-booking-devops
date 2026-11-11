@@ -1,0 +1,30 @@
+---
+# Кластер
+kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default('~/.kube/config', true) | expanduser }}"
+kube_context: minikube
+# IP вузла minikube: NodePort-сервіси (Vault) і Ingress доступні за цією адресою
+node_address: 192.168.49.2
+
+# Застосунок (infra/terraform, робочий простір = середовище)
+booking_environment: prod
+booking_namespace: booking-prod
+image_tag: main
+image_pull_policy: Always
+ingress_enabled: true
+booking_host: prod.booking.local
+
+# Vault: адреса для керуючого вузла й файл із ключем розпечатування та кореневим
+# токеном — поза репозиторієм (змінна середовища VAULT_INIT_FILE)
+vault_addr: "http://{{ node_address }}:30820"
+vault_init_file: "{{ lookup('env', 'VAULT_INIT_FILE') | default('~/.vault/booking-vault-init.json', true) | expanduser }}"
+
+# Моніторинг
+monitoring_namespace: monitoring
+monitoring_ingress_enabled: true
+grafana_host: grafana.booking.local
+prometheus_host: prometheus.booking.local
+alertmanager_host: alerts.booking.local
+prometheus_retention: 7d
+
+# Перевірка через Ingress (на додачу до перевірки всередині кластера)
+verify_ingress: true

@@ -1,0 +1,32 @@
+// Наскрізна перевірка зсередини кластера (виконується в поді booking-service):
+// запити йдуть через Nginx веб-інтерфейсу до API і PostgreSQL, потім — до Prometheus.
+const web = 'http://booking-frontend.{{ booking_namespace }}.svc';
+const prom = 'http://{{ monitoring_release | default("monitoring") }}-kube-prometheus-prometheus.{{ monitoring_namespace | default("monitoring") }}.svc:9090';
+const ns = '{{ booking_namespace }}';
+const check = (ok, what) => { if (!ok) throw new Error(what); };
+
+(async () => {
+  const out = {};
+  const health = await (await fetch(`${web}/api/health`)).json();
+  check(health.storage === 'postgres', 'health: ' + JSON.stringify(health));
+  out.health = health;
+
+  const phone = '+38099' + String(Date.now()).slice(-7);
+  const res = await fetch(`${web}/api/bookings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ restaurantId: 1, date: '2035-06-15', time: '19:00', guests: 2, name: 'Ansible verify', phone }),
+  });
+  const booking = await res.json();
+  check(res.status === 201, 'booking: ' + JSON.stringify(booking));
+  const del = await fetch(`${web}/api/bookings/${booking.id}`, { method: 'DELETE' });
+  check(del.status === 200, 'cancel: HTTP ' + del.status);
+  out.booking = `created #${booking.id} (table ${booking.tableId}) and cancelled`;
+
+  const q = async (expr) => (await (await fetch(`${prom}/api/v1/query?query=${encodeURIComponent(expr)}`)).json()).data.result;
+  out.targetsUp = Number((await q(`sum(up{job="booking-service",namespace="${ns}"})`))[0]?.value[1] || 0);
+  out.created = Number((await q(`sum(booking_requests_total{namespace="${ns}",result="created"})`))[0]?.value[1] || 0);
+  const rules = (await (await fetch(`${prom}/api/v1/rules?type=alert`)).json()).data.groups
+    .filter((g) => g.name === `restaurant-booking.${ns}`).flatMap((g) => g.rules.map((r) => `${r.name}:${r.state}`));
+  out.alertRules = rules;
+  console.log(JSON.stringify(out));
+})().catch((err) => { console.error(err.message); process.exit(1); });

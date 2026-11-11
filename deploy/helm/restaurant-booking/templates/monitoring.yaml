@@ -1,0 +1,100 @@
+{{- /* Етап 5: моніторинг сервісу бронювання. Ресурси створюються лише за наявності
+       CRD kube-prometheus-stack (monitoring.coreos.com/v1). */ -}}
+{{- if and .Values.monitoring.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+{{- $m := .Values.monitoring -}}
+{{- $svc := .Values.bookingService -}}
+{{- $ns := .Release.Namespace -}}
+# Prometheus Operator знаходить Service booking-service за мітками й опитує порт metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $svc.name }}
+  labels:
+    {{- include "booking.labels" . | nindent 4 }}
+    release: {{ $m.release }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "booking.selector" (list . $svc.name) | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $m.scrapeInterval }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-alerts
+  labels:
+    {{- include "booking.labels" . | nindent 4 }}
+    release: {{ $m.release }}
+spec:
+  groups:
+    - name: restaurant-booking.{{ $ns }}
+      rules:
+        - alert: BookingServiceDown
+          # жоден под не віддає метрики (або Prometheus їх узагалі не бачить)
+          expr: sum(up{job="{{ $svc.name }}",namespace="{{ $ns }}"}) == 0 or absent(up{job="{{ $svc.name }}",namespace="{{ $ns }}"})
+          for: 1m
+          labels:
+            severity: critical
+            service: booking
+          annotations:
+            summary: "Сервіс бронювання недоступний ({{ $ns }})"
+            description: "Prometheus не отримує метрики жодного пода booking-service понад 1 хв."
+        - alert: BookingDatabaseDown
+          expr: kube_statefulset_status_replicas_ready{statefulset="{{ .Values.postgresql.name }}",namespace="{{ $ns }}"} < 1
+          for: 2m
+          labels:
+            severity: critical
+            service: booking
+          annotations:
+            summary: "База даних бронювань не готова ({{ $ns }})"
+            description: "Под PostgreSQL не в стані Ready понад 2 хв — нові бронювання неможливі."
+        - alert: BookingHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{namespace="{{ $ns }}",status=~"5.."}[5m]))
+              / sum(rate(http_requests_total{namespace="{{ $ns }}"}[5m])) > {{ $m.alerts.errorRatio }}
+          for: 5m
+          labels:
+            severity: warning
+            service: booking
+          annotations:
+            summary: "Багато помилок 5xx у сервісі бронювання ({{ $ns }})"
+            description: "Частка відповідей 5xx перевищує {{ mulf $m.alerts.errorRatio 100 }} % протягом 5 хв."
+        - alert: BookingHighLatency
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="{{ $ns }}",route!~"/health.*"}[5m])))
+              > {{ $m.alerts.latencyP95 }}
+          for: 5m
+          labels:
+            severity: warning
+            service: booking
+          annotations:
+            summary: "Повільні відповіді сервісу бронювання ({{ $ns }})"
+            description: "95-й перцентиль часу відповіді перевищує {{ $m.alerts.latencyP95 }} с протягом 5 хв."
+        - alert: BookingManyConflicts
+          # бізнес-сигнал: гостям часто бракує вільних столиків
+          expr: |
+            sum(rate(booking_requests_total{namespace="{{ $ns }}",result="conflict"}[15m]))
+              / sum(rate(booking_requests_total{namespace="{{ $ns }}"}[15m])) > {{ $m.alerts.conflictRatio }}
+          for: 10m
+          labels:
+            severity: info
+            service: booking
+          annotations:
+            summary: "Більшість спроб бронювання — конфлікти ({{ $ns }})"
+            description: "Понад {{ mulf $m.alerts.conflictRatio 100 }} % спроб бронювання завершуються відмовою через відсутність вільних столиків."
+---
+# дашборд Grafana: sidecar kube-prometheus-stack імпортує ConfigMap з міткою grafana_dashboard
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-dashboard
+  labels:
+    {{- include "booking.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  restaurant-booking-{{ $ns }}.json: |
+{{ .Files.Get "files/grafana-dashboard.json" | replace "__NAMESPACE__" $ns | indent 4 }}
+{{- end }}

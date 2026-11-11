@@ -12,7 +12,9 @@
    StatefulSet, Ingress з TLS, HPA), розгортання в Minikube і в kind у CI;
 4. етап 4 (ЛР5) — автоматизація тестування (API-тести Postman/Newman, E2E-тести
    Selenium, покриття модульних тестів у CI) та інфраструктура як код
-   (Terraform: середовища dev/staging/prod у Kubernetes).
+   (Terraform: середовища dev/staging/prod у Kubernetes);
+5. етап 5 (ЛР6) — моніторинг (Prometheus, Alertmanager, Grafana), секрети у
+   HashiCorp Vault, CD і фінальне розгортання в production плейбуком Ansible.
 
 ## Структура
 
@@ -35,6 +37,8 @@
 | `tests/e2e/` | етап 4 — E2E-тести інтерфейсу: Selenium WebDriver + pytest |
 | `.github/workflows/tests.yml` | етап 4 — Newman і Selenium проти стека в Docker Compose |
 | `infra/terraform/` | етап 4 — Terraform: модуль середовища (namespace, квоти, Helm-реліз), робочі простори dev/staging/prod |
+| `deploy/ansible/` | етап 5 — плейбук промислового розгортання: ролі vault, secrets, monitoring, booking_app, verify |
+| `.github/workflows/deploy.yml` | етап 5 — CD: ansible-lint, репетиція розгортання в kind, схвалення production, реліз |
 | `.github/workflows/infrastructure.yml` | етап 4 — fmt/validate, apply → helm test → plan без змін → destroy у kind |
 | `docs/` | ТЗ та гілкова стратегія |
 
@@ -96,6 +100,21 @@ terraform destroy
 Середовища відрізняються лише даними в `infra/terraform/main.tf` (репліки,
 HPA, хост Ingress, розмір тому БД, квоти); у робочому просторі `default`
 конфігурація навмисно не застосовується.
+
+## Промислове розгортання (етап 5)
+
+```bash
+cd deploy/ansible
+ansible-playbook -i inventories/production production.yml -e image_tag=<sha>
+```
+
+Керуючий вузол потребує kubectl, Helm, Terraform, Ansible і Python-пакета
+`kubernetes`. Плейбук встановлює Vault і kube-prometheus-stack, бере паролі з
+Vault, розгортає застосунок через Terraform і перевіряє його; повторний запуск
+нічого не змінює. Ключ розпечатування Vault зберігається лише на керуючому
+вузлі (`VAULT_INIT_FILE`). Адреси: `https://prod.booking.local/`,
+`http://grafana.booking.local/`, `http://prometheus.booking.local/`,
+`http://alerts.booking.local/`.
 
 ## Запуск без Docker
 

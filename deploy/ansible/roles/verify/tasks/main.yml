@@ -1,0 +1,72 @@
+---
+- name: Wait until all application pods are ready
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig }}"
+    context: "{{ kube_context }}"
+    kind: Pod
+    namespace: "{{ booking_namespace }}"
+    label_selectors: ["app.kubernetes.io/part-of=restaurant-booking"]
+    field_selectors: ["status.phase=Running"]
+    wait: true
+    wait_condition: { type: Ready, status: "True" }
+    wait_timeout: 300
+  register: verify_pods
+
+- name: Pick a booking-service pod for in-cluster checks
+  ansible.builtin.set_fact:
+    # поди Deployment booking-service мають імена booking-service-<hash>-<id>
+    verify_pod: "{{ verify_pods.resources | map(attribute='metadata.name') | select('match', 'booking-service-') | first }}"
+
+# Prometheus підхоплює новий ServiceMonitor не одразу — повторюємо, доки ціль не стане up
+- name: End-to-end check (API, PostgreSQL, Prometheus targets and alert rules)
+  kubernetes.core.k8s_exec:
+    kubeconfig: "{{ kubeconfig }}"
+    context: "{{ kube_context }}"
+    namespace: "{{ booking_namespace }}"
+    pod: "{{ verify_pod }}"
+    command: "node -e {{ lookup('ansible.builtin.template', 'smoke.js.j2') | quote }}"
+  register: verify_smoke
+  retries: 12
+  delay: 10
+  until: >-
+    verify_smoke.rc is defined and verify_smoke.rc == 0
+    and (verify_smoke.stdout | from_json).targetsUp >= 1
+    and (verify_smoke.stdout | from_json).alertRules | length >= 5
+  changed_when: false
+
+- name: Check the result
+  ansible.builtin.assert:
+    that:
+      - verify_result.health.status == 'ok'
+      - verify_result.targetsUp >= 1
+      - verify_result.alertRules | select('match', 'BookingServiceDown') | list | length == 1
+    success_msg: >-
+      API і БД працюють ({{ verify_result.booking }}); Prometheus бачить {{ verify_result.targetsUp }} под(и) booking-service;
+      правила сповіщень: {{ verify_result.alertRules | join(', ') }}
+  vars:
+    verify_result: "{{ verify_smoke.stdout | from_json }}"
+
+- name: Check the public endpoints through Ingress
+  ansible.builtin.uri:
+    url: "{{ item.url }}"
+    headers: { Host: "{{ item.host }}" }
+    validate_certs: false
+    follow_redirects: none
+    status_code: [200, 302]
+  loop:
+    - { host: "{{ booking_host }}", url: "https://{{ node_address }}/api/health" }
+    - { host: "{{ grafana_host }}", url: "http://{{ node_address }}/login" }
+    - { host: "{{ prometheus_host }}", url: "http://{{ node_address }}/-/ready" }
+    - { host: "{{ alertmanager_host }}", url: "http://{{ node_address }}/-/ready" }
+  loop_control:
+    label: "{{ item.host }}"
+  when: verify_ingress | bool
+
+- name: Summary
+  ansible.builtin.debug:
+    msg:
+      - "Застосунок:  https://{{ booking_host }}/"
+      - "Grafana:     http://{{ grafana_host }}/ (пароль адміністратора — у Vault: secret/booking/{{ booking_environment }}/grafana)"
+      - "Prometheus:  http://{{ prometheus_host }}/"
+      - "Alertmanager: http://{{ alertmanager_host }}/"
+  when: verify_ingress | bool

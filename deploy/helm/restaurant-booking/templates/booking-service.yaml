@@ -35,9 +35,13 @@ spec:
           ports:
             - name: http
               containerPort: {{ $svc.port }}
+            - name: metrics
+              containerPort: {{ $svc.metricsPort }}
           env:
             - name: PORT
               value: {{ $svc.port | quote }}
+            - name: METRICS_PORT
+              value: {{ $svc.metricsPort | quote }}
             - name: DB_HOST
               value: {{ .Values.postgresql.name }}
             - name: DB_USER
@@ -69,6 +73,8 @@ metadata:
   name: {{ $svc.name }}
   labels:
     {{- include "booking.labels" . | nindent 4 }}
+    # за цими мітками Service знаходить ServiceMonitor (templates/monitoring.yaml)
+    {{- include "booking.selector" (list . $svc.name) | nindent 4 }}
 spec:
   type: ClusterIP
   selector:
@@ -77,6 +83,10 @@ spec:
     - name: http
       port: {{ $svc.port }}
       targetPort: http
+    # метрики для Prometheus; Ingress маршрутизує лише на порт http
+    - name: metrics
+      port: {{ $svc.metricsPort }}
+      targetPort: metrics
 {{- if $svc.autoscaling.enabled }}
 ---
 apiVersion: autoscaling/v2

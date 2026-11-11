@@ -1,0 +1,28 @@
+---
+# Інфраструктура застосунку описана в Terraform (етап 4); Ansible лише передає
+# параметри середовища й пароль БД із Vault. Модуль terraform виконує plan і
+# застосовує зміни, тільки якщо вони є — тож повторний запуск нічого не змінює.
+- name: Apply infra/terraform (workspace = environment)
+  community.general.terraform:
+    project_path: "{{ booking_app_repo_root }}/infra/terraform"
+    workspace: "{{ booking_environment }}"
+    force_init: true
+    state: present
+    variables:
+      kube_context: "{{ kube_context }}"
+      kubeconfig: "{{ kubeconfig }}"
+      image_tag: "{{ image_tag }}"
+      image_pull_policy: "{{ image_pull_policy }}"
+      ingress_enabled: "{{ ingress_enabled | string | lower }}"
+      monitoring_enabled: "true"
+  environment:
+    # пароль не потрапляє в аргументи командного рядка й журнал
+    TF_VAR_db_password: "{{ secrets_db_password }}"
+  register: booking_app_terraform
+
+- name: Show the release
+  ansible.builtin.debug:
+    msg: >-
+      {{ booking_app_terraform.outputs.namespace.value }}: реліз {{ booking_app_terraform.outputs.release.value.name }},
+      ревізія {{ booking_app_terraform.outputs.release.value.revision }}, стан {{ booking_app_terraform.outputs.release.value.status }},
+      {{ booking_app_terraform.outputs.url.value }}
