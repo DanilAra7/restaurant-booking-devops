@@ -81,6 +81,10 @@ jobs:
 
       - name: Second run changes nothing (idempotency)
         working-directory: deploy/ansible
+        # без кольорів: ANSI-коди в PLAY RECAP заважають grep
+        env:
+          ANSIBLE_FORCE_COLOR: "0"
+          ANSIBLE_NOCOLOR: "1"
         run: |
           ansible-playbook -i inventories/ci production.yml -e node_address=${{ steps.node.outputs.ip }} | tee /tmp/second-run.log
           grep -E 'control +: ok=[0-9]+ +changed=0 .*failed=0' /tmp/second-run.log
