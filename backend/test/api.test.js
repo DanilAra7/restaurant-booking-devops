@@ -42,12 +42,12 @@ test('GET /restaurants повертає каталог', async () => {
 });
 
 test('повний сценарій: доступність → бронювання → скасування', async () => {
-  const query = '/restaurants/2/availability?date=2026-10-10&time=19:00&guests=8';
+  const query = '/restaurants/2/availability?date=2030-10-10&time=19:00&guests=8';
   let res = await call('GET', query);
   assert.strictEqual(res.body.available, true);
 
   res = await call('POST', '/bookings', {
-    restaurantId: 2, date: '2026-10-10', time: '19:00', guests: 8, name: 'Олена', phone: '+380671112233',
+    restaurantId: 2, date: '2030-10-10', time: '19:00', guests: 8, name: 'Олена', phone: '+380671112233',
   });
   assert.strictEqual(res.status, 201);
   const id = res.body.id;
@@ -63,7 +63,7 @@ test('повний сценарій: доступність → бронюван
 });
 
 test('помилки мапляться на HTTP-статуси', async () => {
-  assert.strictEqual((await call('GET', '/restaurants/99/availability?date=2026-10-10&time=19:00&guests=2')).status, 404);
+  assert.strictEqual((await call('GET', '/restaurants/99/availability?date=2030-10-10&time=19:00&guests=2')).status, 404);
   assert.strictEqual((await call('POST', '/bookings', { restaurantId: 1 })).status, 400);
   assert.strictEqual((await call('GET', '/unknown')).status, 404);
 });

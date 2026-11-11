@@ -29,8 +29,16 @@ function isRealDate(date) {
   return DATE_RE.test(date) && new Date(`${date}T00:00:00Z`).toISOString().startsWith(date);
 }
 
-function validateRequest(restaurant, { date, time, guests }) {
+// сьогоднішня дата в часовому поясі ресторанів (Київ), а не сервера/UTC:
+// о 01:00 за Києвом у UTC ще «вчора»
+function todayInKyiv(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv' }).format(now);
+}
+
+function validateRequest(restaurant, { date, time, guests }, today = todayInKyiv()) {
   if (!isRealDate(String(date))) throw new BookingError('VALIDATION', 'Дата має бути у форматі YYYY-MM-DD');
+  // рядки YYYY-MM-DD порівнюються як дати
+  if (String(date) < today) throw new BookingError('VALIDATION', 'Не можна бронювати на минулу дату');
   if (!TIME_RE.test(String(time))) throw new BookingError('VALIDATION', 'Час має бути у форматі HH:MM');
   const n = Number(guests);
   if (!Number.isInteger(n) || n < 1) throw new BookingError('VALIDATION', 'Кількість гостей має бути цілим числом від 1');
@@ -60,6 +68,7 @@ module.exports = {
   BOOKING_MINUTES,
   BookingError,
   overlaps,
+  todayInKyiv,
   validateRequest,
   validateGuest,
   freeTables,
