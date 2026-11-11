@@ -1,10 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { overlaps } = require('../src/booking');
+const { overlaps, validateRequest, todayInKyiv } = require('../src/booking');
 const { createService } = require('../src/service');
 const { createMemoryRepo } = require('../src/repo/memory');
 
-const request = { date: '2026-10-10', time: '19:00', guests: 2 };
+const request = { date: '2030-10-10', time: '19:00', guests: 2 };
 const guest = { name: 'Іван', phone: '+380501234567' };
 const fresh = () => createService(createMemoryRepo());
 const code = (expected) => (err) => err.code === expected;
@@ -13,6 +13,20 @@ test('overlaps: інтервали ближче ніж 2 години конфл
   assert.strictEqual(overlaps('19:00', '20:59'), true);
   assert.strictEqual(overlaps('19:00', '21:00'), false);
   assert.strictEqual(overlaps('17:30', '19:00'), true);
+});
+
+test('дата в минулому відхиляється, сьогоднішня — ні', () => {
+  const restaurant = { opens: '10:00', closes: '23:00' };
+  const at = (date) => () => validateRequest(restaurant, { date, time: '19:00', guests: 2 }, '2030-05-10');
+  assert.throws(at('2030-05-09'), /минулу дату/);
+  assert.doesNotThrow(at('2030-05-10'));
+  assert.doesNotThrow(at('2030-05-11'));
+});
+
+test('todayInKyiv рахує дату за київським часом, а не UTC', () => {
+  // 22:30 UTC 31 грудня — у Києві (UTC+2) вже 1 січня
+  assert.strictEqual(todayInKyiv(new Date('2030-12-31T22:30:00Z')), '2031-01-01');
+  assert.strictEqual(todayInKyiv(new Date('2030-07-01T12:00:00Z')), '2030-07-01');
 });
 
 test('findAvailableTables повертає столики від найменшого', async () => {
@@ -39,7 +53,7 @@ test('один столик не бронюється двічі на перет
 
 test('коли всі столики зайняті — помилка CONFLICT', async () => {
   const service = fresh();
-  const big = { restaurantId: 2, date: '2026-10-10', time: '18:00', guests: 8, ...guest };
+  const big = { restaurantId: 2, date: '2030-10-10', time: '18:00', guests: 8, ...guest };
   await service.createBooking(big);
   await assert.rejects(service.createBooking(big), code('CONFLICT'));
 });
@@ -55,7 +69,7 @@ test('некоректні дані відхиляються', async () => {
   const service = fresh();
   const bad = [
     { ...request, date: '10.10.2026' },
-    { ...request, date: '2026-02-30' },
+    { ...request, date: '2030-02-30' },
     { ...request, time: '7pm' },
     { ...request, guests: 0 },
   ];
@@ -69,18 +83,18 @@ test('некоректні дані відхиляються', async () => {
 
 test('findBookingsByPhone повертає історію гостя в хронологічному порядку', async () => {
   const service = fresh();
-  await service.createBooking({ restaurantId: 1, ...request, date: '2026-10-12', ...guest });
-  await service.createBooking({ restaurantId: 2, date: '2026-10-11', time: '18:00', guests: 2, ...guest });
+  await service.createBooking({ restaurantId: 1, ...request, date: '2030-10-12', ...guest });
+  await service.createBooking({ restaurantId: 2, date: '2030-10-11', time: '18:00', guests: 2, ...guest });
   await service.createBooking({ restaurantId: 1, ...request, name: 'Інший', phone: '+380999999999' });
 
   const history = await service.findBookingsByPhone('+38 (050) 123-45-67');
-  assert.deepStrictEqual(history.map((b) => b.date), ['2026-10-11', '2026-10-12']);
+  assert.deepStrictEqual(history.map((b) => b.date), ['2030-10-11', '2030-10-12']);
   await assert.rejects(service.findBookingsByPhone(''), code('VALIDATION'));
 });
 
 test('cancelBooking звільняє столик', async () => {
   const service = fresh();
-  const big = { restaurantId: 2, date: '2026-10-10', time: '18:00', guests: 8 };
+  const big = { restaurantId: 2, date: '2030-10-10', time: '18:00', guests: 8 };
   const booking = await service.createBooking({ ...big, ...guest });
   await service.cancelBooking(booking.id);
   assert.strictEqual((await service.findAvailableTables(2, big)).length, 1);

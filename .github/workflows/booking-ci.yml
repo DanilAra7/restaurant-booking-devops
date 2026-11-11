@@ -40,5 +40,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Unit & API tests
-        run: npm test
+      # етап 4: модульні тести з звітом про покриття коду
+      - name: Unit & API tests (with coverage)
+        run: npm test -- --experimental-test-coverage

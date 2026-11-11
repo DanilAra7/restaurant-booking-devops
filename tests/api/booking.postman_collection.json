@@ -1,0 +1,748 @@
+{
+  "info": {
+    "name": "Restaurant booking API",
+    "description": "API-тести сервісу бронювання (етап 4 індивідуального проєкту). Запуск: npx newman run tests/api/booking.postman_collection.json --env-var baseUrl=http://localhost:8080/api",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api"
+    },
+    {
+      "key": "restaurantId",
+      "value": "1"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Один раз на запуск: випадкова майбутня дата й телефон, щоб повторні запуски",
+          "// на тій самій базі даних не конфліктували між собою.",
+          "if (!pm.collectionVariables.get(\"date\")) {",
+          "  const pad = (n) => String(n).padStart(2, \"0\");",
+          "  const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));",
+          "  pm.collectionVariables.set(\"date\", `${rnd(2031, 2039)}-${pad(rnd(1, 12))}-${pad(rnd(1, 28))}`);",
+          "  pm.collectionVariables.set(\"phone\", \"+38050\" + rnd(1000000, 9999999));",
+          "  // «+» у рядку запиту означає пробіл, тому для URL телефон кодується",
+          "  pm.collectionVariables.set(\"phoneQuery\", encodeURIComponent(pm.collectionVariables.get(\"phone\")));",
+          "  pm.collectionVariables.set(\"yesterday\", new Date(Date.now() - 86400000).toISOString().slice(0, 10));",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Стан сервісу та каталог",
+      "item": [
+        {
+          "name": "Health: сервіс і база даних готові",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"відповідь у JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "pm.test(\"сховище — PostgreSQL\", () => pm.expect(pm.response.json()).to.eql({ status: \"ok\", storage: \"postgres\" }));",
+                  "pm.test(\"час відповіді < 1 с\", () => pm.expect(pm.response.responseTime).to.be.below(1000));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Каталог ресторанів",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/restaurants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "restaurants"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "pm.test(\"щонайменше 2 ресторани\", () => pm.expect(list).to.be.an(\"array\").with.length.at.least(2));",
+                  "pm.test(\"у кожного ресторану є id, назва й години роботи\", () => list.forEach((r) => {",
+                  "  pm.expect(r).to.include.keys(\"id\", \"name\", \"opens\", \"closes\");",
+                  "  pm.expect(r.opens).to.match(/^\\d{2}:\\d{2}$/);",
+                  "}));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Основний сценарій бронювання",
+      "item": [
+        {
+          "name": "Перевірка наявності столика",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/restaurants/{{restaurantId}}/availability?date={{date}}&time=19:00&guests=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "restaurants",
+                "{{restaurantId}}",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{date}}"
+                },
+                {
+                  "key": "time",
+                  "value": "19:00"
+                },
+                {
+                  "key": "guests",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"є вільний столик\", () => pm.expect(pm.response.json().available).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Створення бронювання",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"date\": \"{{date}}\",\n  \"time\": \"19:00\",\n  \"guests\": 2,\n  \"name\": \"Newman\",\n  \"phone\": \"{{phone}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"повернуто номер бронювання і столик\", () => {",
+                  "  pm.expect(b.id).to.be.a(\"number\");",
+                  "  pm.expect(b.tableId).to.be.a(\"number\");",
+                  "});",
+                  "pm.test(\"збережено дату, час і кількість гостей\", () =>",
+                  "  pm.expect(b).to.include({ date: pm.collectionVariables.get(\"date\"), time: \"19:00\", guests: 2 }));",
+                  "pm.collectionVariables.set(\"bookingId\", b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Історія бронювань гостя",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings?phone={{phoneQuery}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ],
+              "query": [
+                {
+                  "key": "phone",
+                  "value": "{{phoneQuery}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const id = Number(pm.collectionVariables.get(\"bookingId\"));",
+                  "pm.test(\"нове бронювання є в історії\", () => pm.expect(pm.response.json().map((b) => b.id)).to.include(id));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Бізнес-правила",
+      "item": [
+        {
+          "name": "Єдиний столик на 8 гостей: перше бронювання",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": 2,\n  \"date\": \"{{date}}\",\n  \"time\": \"17:00\",\n  \"guests\": 8,\n  \"name\": \"Newman\",\n  \"phone\": \"{{phone}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"bigBookingId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Той самий столик через годину: конфлікт 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": 2,\n  \"date\": \"{{date}}\",\n  \"time\": \"18:00\",\n  \"guests\": 8,\n  \"name\": \"Newman\",\n  \"phone\": \"{{phone}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"повідомлення: немає вільних столиків\", () => pm.expect(pm.response.json().error).to.include(\"немає вільних столиків\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Через 2 години столик знову вільний",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/restaurants/2/availability?date={{date}}&time=19:00&guests=8",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "restaurants",
+                "2",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{date}}"
+                },
+                {
+                  "key": "time",
+                  "value": "19:00"
+                },
+                {
+                  "key": "guests",
+                  "value": "8"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"доступний\", () => pm.expect(pm.response.json().available).to.be.true);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Валідація запитів",
+      "item": [
+        {
+          "name": "Неіснуюча дата 30 лютого: 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"date\": \"2031-02-30\",\n  \"time\": \"19:00\",\n  \"guests\": 2,\n  \"name\": \"Newman\",\n  \"phone\": \"{{phone}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"повідомлення: YYYY-MM-DD\", () => pm.expect(pm.response.json().error).to.include(\"YYYY-MM-DD\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Дата в минулому: 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"date\": \"{{yesterday}}\",\n  \"time\": \"19:00\",\n  \"guests\": 2,\n  \"name\": \"Newman\",\n  \"phone\": \"{{phone}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"повідомлення: минулу дату\", () => pm.expect(pm.response.json().error).to.include(\"минулу дату\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "0 гостей: 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"date\": \"{{date}}\",\n  \"time\": \"19:00\",\n  \"guests\": 0,\n  \"name\": \"Newman\",\n  \"phone\": \"{{phone}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"повідомлення: Кількість гостей\", () => pm.expect(pm.response.json().error).to.include(\"Кількість гостей\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Час до відкриття ресторану: 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"date\": \"{{date}}\",\n  \"time\": \"09:00\",\n  \"guests\": 2,\n  \"name\": \"Newman\",\n  \"phone\": \"{{phone}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"повідомлення: Бронювання можливе з 10:00\", () => pm.expect(pm.response.json().error).to.include(\"Бронювання можливе з 10:00\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Порожнє ім'я: 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"date\": \"{{date}}\",\n  \"time\": \"19:00\",\n  \"guests\": 2,\n  \"name\": \"  \",\n  \"phone\": \"{{phone}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"повідомлення: Ім'я гостя\", () => pm.expect(pm.response.json().error).to.include(\"Ім'я гостя\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Некоректний JSON: 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"restaurantId\": 1,"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"повідомлення: JSON\", () => pm.expect(pm.response.json().error).to.include(\"JSON\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Неіснуючий ресторан: 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/restaurants/999/availability?date={{date}}&time=19:00&guests=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "restaurants",
+                "999",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{date}}"
+                },
+                {
+                  "key": "time",
+                  "value": "19:00"
+                },
+                {
+                  "key": "guests",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"повідомлення: Ресторан не знайдено\", () => pm.expect(pm.response.json().error).to.include(\"Ресторан не знайдено\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Невідомий маршрут: 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/unknown",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "unknown"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Скасування",
+      "item": [
+        {
+          "name": "Скасування бронювання",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"скасовано саме це бронювання\", () =>",
+                  "  pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get(\"bookingId\"))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Повторне скасування: 404",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Скасування бронювання на 8 гостей",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/{{bigBookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "bookings",
+                "{{bigBookingId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

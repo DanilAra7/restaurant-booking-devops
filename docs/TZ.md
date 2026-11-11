@@ -21,7 +21,7 @@
 
 | Сервіс | Відповідальність | Етап появи |
 | --- | --- | --- |
-| `booking-service` (`backend/`) | каталог ресторанів, доступність, бронювання | 1; етап 2 — контейнер і PostgreSQL; етап 3 — Kubernetes з HPA |
+| `booking-service` (`backend/`) | каталог ресторанів, доступність, бронювання | 1; етап 2 — контейнер і PostgreSQL; етап 3 — Kubernetes з HPA; етап 4 — API-тести |
 | `frontend` (`frontend/`) | веб-інтерфейс гостя | 1; етап 2 — контейнер з Nginx; етап 3 — Kubernetes за Ingress |
 | `auth-service` | реєстрація, вхід, ролі | наступні ітерації розробки |
 | `restaurant-service` | каталог і адмін-панель (виділяється з booking-service) | наступні ітерації розробки |
@@ -41,10 +41,10 @@
 | Контейнеризація | Docker, Docker Compose, GitHub Container Registry | 2 | реалізовано |
 | Оркестрація | Kubernetes (Minikube), Helm | 3 | реалізовано: `deploy/helm/restaurant-booking` |
 | Модульні тести | JUnit/PyTest → для Node.js-стеку: вбудований `node:test` | 1 | реалізовано |
-| API-тести | Postman/Newman | 4 | заплановано (на етапі 1 — базові API-тести на `node:test`) |
-| E2E-тести | Selenium WebDriver | 4 | заплановано |
+| API-тести | Postman/Newman | 4 | реалізовано: `tests/api`, у CI — `tests.yml` |
+| E2E-тести | Selenium WebDriver | 4 | реалізовано: `tests/e2e` (Selenium + pytest), у CI — `tests.yml` |
 | Моніторинг | Prometheus + Grafana | 5 | заплановано (`GET /health` уже є) |
-| IaC | Terraform | 4 | заплановано |
+| IaC | Terraform | 4 | реалізовано: `infra/terraform`, у CI — `infrastructure.yml` |
 | Секрети | HashiCorp Vault | 5 | заплановано |
 
 JUnit і PyTest у ТЗ ЛР1 названо як фреймворки модульного тестування бекенду,
@@ -120,3 +120,27 @@ booking-service отримав сховище в PostgreSQL (`backend/src/repo/p
 недоступність — окремий `/health/live`), rolling update без зменшення кількості
 робочих подів і PersistentVolumeClaim для даних PostgreSQL. Пароль БД
 генерується Helm і зберігається в Secret (до переходу на Vault на етапі 5).
+
+## Етап 4 — план з ЛР1 і виконання
+
+Етап 4 за планом ЛР1: «Автоматизація тестування та опис інфраструктури як
+коду» — підвищити якість продукту й відтворюваність середовищ. Інструменти:
+Selenium, Postman/Newman, JUnit/PyTest, Terraform. Очікуваний результат: набір
+автотестів у CI-конвеєрі; Terraform-скрипти інфраструктури.
+
+| Робота за планом ЛР1 | Виконання |
+| --- | --- |
+| Selenium-сценарії ключового флоу бронювання | `tests/e2e`: перевірка наявності → бронювання → історія → скасування, клієнтська валідація, конфлікт за єдиний столик; Page Object, знімки кроків |
+| Postman/Newman-колекції для API | `tests/api`: 19 запитів і 38 перевірок — стан, каталог, бронювання, бізнес-правила (конфлікт 409), валідація (400/404), скасування |
+| Модульні тести | `node:test`: 16 тестів booking-service; у CI — зі звітом про покриття |
+| Інтеграція тестів у CI | `tests.yml`: Newman і Selenium (headless Chrome) проти стека Docker Compose з PostgreSQL; звіти JUnit і знімки — артефакти запуску |
+| Опис інфраструктури Terraform-конфігураціями | `infra/terraform`: модуль `booking-environment` (namespace, ResourceQuota, LimitRange, Helm-реліз), середовища dev/staging/prod як робочі простори, стан із блокуванням у кластері; у CI — `infrastructure.yml` |
+
+API-тести виявили дефект: сервіс приймав бронювання на минулу дату (обмеження
+було лише в полі дати інтерфейсу). Правило перенесено на сервер (дата
+порівнюється з поточною датою за київським часом) і покрито модульними тестами.
+
+Terraform описує інфраструктуру в Kubernetes, бо саме там розгортається
+застосунок (етап 3); хмарного облікового запису в проєкті немає. Хмарна частина
+(VPC, віртуальні машини, S3-бекенд стану) відпрацьована в завданнях ЛР5 на
+емуляторі AWS.

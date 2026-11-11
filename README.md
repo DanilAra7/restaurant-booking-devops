@@ -9,7 +9,10 @@
    (multi-stage), Docker Compose для локальної розробки, PostgreSQL,
    публікація образів у ghcr.io;
 3. етап 3 (ЛР4) — оркестрація: Helm-чарт для Kubernetes (Deployment, Service,
-   StatefulSet, Ingress з TLS, HPA), розгортання в Minikube і в kind у CI.
+   StatefulSet, Ingress з TLS, HPA), розгортання в Minikube і в kind у CI;
+4. етап 4 (ЛР5) — автоматизація тестування (API-тести Postman/Newman, E2E-тести
+   Selenium, покриття модульних тестів у CI) та інфраструктура як код
+   (Terraform: середовища dev/staging/prod у Kubernetes).
 
 ## Структура
 
@@ -28,6 +31,11 @@
 | `deploy/helm/restaurant-booking/` | Helm-чарт для Kubernetes (етап 3) |
 | `.github/workflows/kubernetes.yml` | етап 3 — lint чарта, розгортання в kind, helm test, димовий тест |
 | `scripts/smoke-test.sh` | димовий тест розгорнутого стека |
+| `tests/api/` | етап 4 — колекція Postman (19 запитів, 38 перевірок) і її генератор |
+| `tests/e2e/` | етап 4 — E2E-тести інтерфейсу: Selenium WebDriver + pytest |
+| `.github/workflows/tests.yml` | етап 4 — Newman і Selenium проти стека в Docker Compose |
+| `infra/terraform/` | етап 4 — Terraform: модуль середовища (namespace, квоти, Helm-реліз), робочі простори dev/staging/prod |
+| `.github/workflows/infrastructure.yml` | етап 4 — fmt/validate, apply → helm test → plan без змін → destroy у kind |
 | `docs/` | ТЗ та гілкова стратегія |
 
 ## Запуск у Docker (етап 2)
@@ -61,6 +69,33 @@ Ingress обслуговує `https://booking.local/` (веб-інтерфейс
 з драйвером docker у Windows потрібен `minikube tunnel` і запис
 `127.0.0.1 booking.local` у файлі hosts. Тег образів для відтворюваного
 розгортання — `--set image.tag=<sha коміту>`.
+
+## Автоматизовані тести (етап 4)
+
+```bash
+docker compose up -d --build --wait
+npx newman run tests/api/booking.postman_collection.json --env-var baseUrl=http://localhost:8080/api
+pip install -r tests/e2e/requirements.txt
+pytest tests/e2e -v              # E2E_HEADLESS=0 — з видимим вікном Chrome
+```
+
+Колекцію Postman генерує `python tests/api/build_collection.py` (її можна
+імпортувати в Postman); знімки кроків E2E-тестів — у `tests/e2e/screenshots/`.
+
+## Інфраструктура як код (етап 4)
+
+```bash
+cd infra/terraform
+terraform init                        # стан — Secret у кластері (backend kubernetes)
+terraform workspace new dev           # середовище = робочий простір: dev, staging, prod
+terraform apply                       # namespace booking-dev, квоти, Helm-реліз чарта
+terraform output url                  # https://dev.booking.local/
+terraform destroy
+```
+
+Середовища відрізняються лише даними в `infra/terraform/main.tf` (репліки,
+HPA, хост Ingress, розмір тому БД, квоти); у робочому просторі `default`
+конфігурація навмисно не застосовується.
 
 ## Запуск без Docker
 

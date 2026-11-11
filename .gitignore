@@ -1,2 +1,12 @@
 node_modules/
 .env
+# результати автотестів (етап 4) — публікуються як артефакти CI
+tests/e2e/screenshots/
+tests/results/
+__pycache__/
+.pytest_cache/
+# Terraform: провайдери й локальний стан не комітяться (стан — у backend kubernetes)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
