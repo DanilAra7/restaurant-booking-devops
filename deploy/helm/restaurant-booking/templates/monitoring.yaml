@@ -33,8 +33,12 @@ spec:
     - name: restaurant-booking.{{ $ns }}
       rules:
         - alert: BookingServiceDown
-          # жоден под не віддає метрики (або Prometheus їх узагалі не бачить)
-          expr: sum(up{job="{{ $svc.name }}",namespace="{{ $ns }}"}) == 0 or absent(up{job="{{ $svc.name }}",namespace="{{ $ns }}"})
+          # жоден под не віддає метрики (або цілей немає зовсім). Обидві частини
+          # виразу дають ряд з тими самими мітками job і namespace — інакше
+          # Alertmanager вважав би їх різними сповіщеннями
+          expr: |
+            sum by (job, namespace) (up{job="{{ $svc.name }}",namespace="{{ $ns }}"}) == 0
+              or absent(up{job="{{ $svc.name }}",namespace="{{ $ns }}"})
           for: 1m
           labels:
             severity: critical
