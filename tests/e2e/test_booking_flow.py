@@ -69,7 +69,11 @@ class BookingPage:
         return el.text, el.get_attribute("class")
 
     def history(self):
-        return [li.text for li in self.driver.find_elements(By.CSS_SELECTOR, "#bookings li")]
+        # список перемальовується повністю (replaceChildren), тож елементи, знайдені
+        # find_elements, можуть «застаріти» до читання тексту; JS читає список атомарно
+        return self.driver.execute_script(
+            "return [...document.querySelectorAll('#bookings li')]"
+            ".map((li) => (li.querySelector('span') || li).textContent)")
 
 
 @pytest.fixture
