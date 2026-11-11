@@ -1,0 +1,38 @@
+---
+# Етап 5: фінальне розгортання системи бронювання в промислове середовище.
+#
+#   ansible-playbook -i inventories/production production.yml [-e image_tag=<sha>]
+#
+# Плейбук виконується на керуючому вузлі, що має доступ до API Kubernetes
+# (kubeconfig), і приводить кластер до описаного стану:
+#   vault       — HashiCorp Vault: встановлення, ініціалізація, розпечатування,
+#                 KV-сховище, політика й AppRole для розгортання;
+#   secrets     — секрети середовища у Vault (генеруються один раз) і Secret Grafana;
+#   monitoring  — Prometheus, Alertmanager, Grafana (kube-prometheus-stack);
+#   booking_app — застосунок через Terraform (infra/terraform, робочий простір prod)
+#                 з паролем БД із Vault і увімкненим моніторингом;
+#   verify      — наскрізна перевірка: поди, API, бронювання, метрики, правила сповіщень.
+# Повторний запуск нічого не змінює (ідемпотентність).
+- name: Production rollout of the restaurant booking system
+  hosts: control
+  connection: local
+  gather_facts: false
+
+  pre_tasks:
+    - name: Check that the cluster is reachable
+      kubernetes.core.k8s_cluster_info:
+        kubeconfig: "{{ kubeconfig }}"
+        context: "{{ kube_context }}"
+      register: cluster
+      changed_when: false
+
+    - name: Show the target
+      ansible.builtin.debug:
+        msg: "Kubernetes {{ cluster.version.server.kubernetes.gitVersion }} ({{ kube_context }}), середовище {{ booking_environment }}, образи :{{ image_tag }}"
+
+  roles:
+    - vault
+    - secrets
+    - monitoring
+    - booking_app
+    - verify

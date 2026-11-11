@@ -37,6 +37,19 @@ variable "image_pull_policy" {
   default     = "IfNotPresent"
 }
 
+variable "monitoring_enabled" {
+  description = "ServiceMonitor, правила сповіщень і дашборд Grafana (потрібен kube-prometheus-stack)"
+  type        = bool
+  default     = false
+}
+
+variable "db_password" {
+  description = "Пароль PostgreSQL із Vault; null — чарт генерує пароль сам"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 variable "ingress_enabled" {
   description = "Створювати Ingress з TLS"
   type        = bool

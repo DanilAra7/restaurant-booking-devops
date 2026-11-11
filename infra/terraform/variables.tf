@@ -27,6 +27,19 @@ variable "image_pull_policy" {
   }
 }
 
+variable "monitoring_enabled" {
+  description = "Моніторинг середовища: ServiceMonitor, правила сповіщень, дашборд Grafana"
+  type        = bool
+  default     = false
+}
+
+variable "db_password" {
+  description = "Пароль PostgreSQL (етап 5: з Vault через Ansible, змінна середовища TF_VAR_db_password)"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 variable "ingress_enabled" {
   description = "Створювати Ingress (потрібен контролер ingress-nginx; у kind у CI його немає)"
   type        = bool

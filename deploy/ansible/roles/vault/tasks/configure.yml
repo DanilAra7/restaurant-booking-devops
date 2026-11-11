@@ -1,0 +1,118 @@
+---
+# Кожен крок спершу читає поточний стан і змінює його лише за потреби —
+# повторний запуск плейбука нічого не змінює.
+- name: Read mounted secret engines
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/mounts"
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+  register: vault_mounts
+  no_log: true
+
+- name: Enable the KV v2 secret engine at secret/
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/mounts/secret"
+    method: POST
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+    body_format: json
+    body: { type: kv, options: { version: "2" } }
+    status_code: 204
+  when: "'secret/' not in vault_mounts.json.data"
+  changed_when: true
+
+- name: Read the deploy policy
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/policies/acl/{{ vault_deploy_policy }}"
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+    status_code: [200, 404]
+  register: vault_policy
+
+- name: Write the deploy policy (secrets of the project only)
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/policies/acl/{{ vault_deploy_policy }}"
+    method: PUT
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+    body_format: json
+    body: { policy: "{{ lookup('ansible.builtin.template', 'booking-deploy.hcl.j2') }}" }
+    status_code: 204
+  when: vault_policy.status == 404 or vault_policy.json.data.policy != lookup('ansible.builtin.template', 'booking-deploy.hcl.j2')
+  changed_when: true
+
+- name: Read enabled auth methods
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/auth"
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+  register: vault_auth
+  no_log: true
+
+- name: Enable AppRole authentication
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/auth/approle"
+    method: POST
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+    body_format: json
+    body: { type: approle }
+    status_code: 204
+  when: "'approle/' not in vault_auth.json.data"
+  changed_when: true
+
+- name: Read the deploy role
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/auth/approle/role/{{ vault_deploy_role }}"
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+    status_code: [200, 404]
+  register: vault_role
+
+- name: Create the deploy role (short-lived tokens with the deploy policy)
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/auth/approle/role/{{ vault_deploy_role }}"
+    method: POST
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+    body_format: json
+    body:
+      token_policies: ["{{ vault_deploy_policy }}"]
+      token_ttl: 20m
+      token_max_ttl: 30m
+      secret_id_ttl: 10m
+      secret_id_num_uses: 1
+    status_code: 204
+  when: vault_role.status == 404
+  changed_when: true
+
+# далі плейбук працює не з кореневим токеном, а з токеном AppRole —
+# лише з правами політики booking-deploy
+- name: Get the role ID
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/auth/approle/role/{{ vault_deploy_role }}/role-id"
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+  register: vault_role_id
+  no_log: true
+
+- name: Issue a one-time secret ID
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/auth/approle/role/{{ vault_deploy_role }}/secret-id"
+    method: POST
+    headers: { X-Vault-Token: "{{ vault_root_token }}" }
+  register: vault_secret_id
+  changed_when: false
+  no_log: true
+
+- name: Log in with AppRole
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/auth/approle/login"
+    method: POST
+    body_format: json
+    body:
+      role_id: "{{ vault_role_id.json.data.role_id }}"
+      secret_id: "{{ vault_secret_id.json.data.secret_id }}"
+  register: vault_login
+  no_log: true
+
+- name: Use the AppRole token for the next roles
+  ansible.builtin.set_fact:
+    vault_token: "{{ vault_login.json.auth.client_token }}"
+    vault_token_policies: "{{ vault_login.json.auth.token_policies }}"
+  no_log: true
+
+- name: Show the token policies
+  ansible.builtin.debug:
+    msg: "Токен розгортання: політики {{ vault_token_policies | join(', ') }}"

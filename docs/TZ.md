@@ -37,15 +37,15 @@
 
 | Категорія | Інструмент за ТЗ ЛР1 | Етап | Стан |
 | --- | --- | --- | --- |
-| CI/CD | GitHub Actions | 1 | базовий CI — `booking-ci.yml`; з етапу 2 — `containers.yml` |
+| CI/CD | GitHub Actions | 1, 5 | базовий CI — `booking-ci.yml`; з етапу 2 — `containers.yml`; етап 5 — CD `deploy.yml` (репетиція розгортання + схвалення production) |
 | Контейнеризація | Docker, Docker Compose, GitHub Container Registry | 2 | реалізовано |
 | Оркестрація | Kubernetes (Minikube), Helm | 3 | реалізовано: `deploy/helm/restaurant-booking` |
 | Модульні тести | JUnit/PyTest → для Node.js-стеку: вбудований `node:test` | 1 | реалізовано |
 | API-тести | Postman/Newman | 4 | реалізовано: `tests/api`, у CI — `tests.yml` |
 | E2E-тести | Selenium WebDriver | 4 | реалізовано: `tests/e2e` (Selenium + pytest), у CI — `tests.yml` |
-| Моніторинг | Prometheus + Grafana | 5 | заплановано (`GET /health` уже є) |
+| Моніторинг | Prometheus + Grafana | 5 | реалізовано: `/metrics` у booking-service, ServiceMonitor, правила сповіщень і дашборд у чарті, kube-prometheus-stack (роль `monitoring`) |
 | IaC | Terraform | 4 | реалізовано: `infra/terraform`, у CI — `infrastructure.yml` |
-| Секрети | HashiCorp Vault | 5 | заплановано |
+| Секрети | HashiCorp Vault | 5 | реалізовано: Vault у кластері (роль `vault`), пароль БД і Grafana — у Vault, доступ Ansible через AppRole |
 
 JUnit і PyTest у ТЗ ЛР1 названо як фреймворки модульного тестування бекенду,
 але мову бекенду тоді не було зафіксовано. На етапі 1 обрано Node.js (один
@@ -144,3 +144,23 @@ Terraform описує інфраструктуру в Kubernetes, бо саме
 застосунок (етап 3); хмарного облікового запису в проєкті немає. Хмарна частина
 (VPC, віртуальні машини, S3-бекенд стану) відпрацьована в завданнях ЛР5 на
 емуляторі AWS.
+
+## Етап 5 — план з ЛР1 і виконання
+
+Етап 5 за планом ЛР1: «Моніторинг, керування credentials та фінальне
+розгортання» — забезпечити безпечну й спостережувану експлуатацію.
+Інструменти: Prometheus, Grafana, HashiCorp Vault, GitHub Actions (CD).
+Очікуваний результат: система в production з моніторингом, безпечним
+зберіганням секретів і повним CI/CD.
+
+| Робота за планом ЛР1 | Виконання |
+| --- | --- |
+| Розгортання Prometheus і Grafana | kube-prometheus-stack (Prometheus Operator, Prometheus, Alertmanager, Grafana, node-exporter, kube-state-metrics) — роль `monitoring`; booking-service віддає метрики на окремому порту 9464 (`/metrics`), ServiceMonitor і дашборд Grafana постачає чарт |
+| Налаштування алертів | PrometheusRule у чарті: BookingServiceDown, BookingDatabaseDown, BookingHighErrorRate, BookingHighLatency, BookingManyConflicts; Alertmanager надсилає сповіщення сервісу на webhook (`alert-receiver`) |
+| Перенесення секретів у Vault | Vault у промисловому режимі (файлове сховище на томі) — роль `vault`; пароль БД (імпортований з наявного середовища) і пароль Grafana зберігаються у Vault, Ansible читає їх через AppRole з політикою лише на `secret/booking/*` і передає в Terraform (`TF_VAR_db_password`) та Secret Grafana |
+| Налаштування CD-етапу | `deploy.yml`: ansible-lint → репетиція повного розгортання в kind (повторний запуск — changed=0) → схвалення в середовищі production → GitHub Release з версією для розгортання |
+| Фінальне розгортання в промислове середовище | `ansible-playbook -i inventories/production production.yml -e image_tag=<sha>` (`deploy/ansible`): Vault, секрети, моніторинг, застосунок через Terraform (робочий простір prod), наскрізна перевірка |
+
+Ansible (ЛР6) виконує роль інструмента керування конфігурацією всього
+промислового середовища: один ідемпотентний плейбук приводить кластер до
+описаного стану.
