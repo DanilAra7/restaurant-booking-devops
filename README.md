@@ -38,6 +38,7 @@
 | `.github/workflows/tests.yml` | етап 4 — Newman і Selenium проти стека в Docker Compose |
 | `infra/terraform/` | етап 4 — Terraform: модуль середовища (namespace, квоти, Helm-реліз), робочі простори dev/staging/prod |
 | `deploy/ansible/` | етап 5 — плейбук промислового розгортання: ролі vault, secrets, monitoring, booking_app, verify |
+| `deploy/argocd/` | GitOps (ЛР7): Application ArgoCD — середовище booking-gitops з гілки develop |
 | `.github/workflows/deploy.yml` | етап 5 — CD: ansible-lint, репетиція розгортання в kind, схвалення production, реліз |
 | `.github/workflows/infrastructure.yml` | етап 4 — fmt/validate, apply → helm test → plan без змін → destroy у kind |
 | `docs/` | ТЗ та гілкова стратегія |

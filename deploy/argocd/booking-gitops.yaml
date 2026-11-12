@@ -1,0 +1,42 @@
+# GitOps для індивідуального проєкту (ЛР7): ArgoCD бере Helm-чарт застосунку з
+# гілки develop і підтримує середовище booking-gitops у стані з Git.
+#   kubectl apply -f deploy/argocd/booking-gitops.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: booking-gitops
+  namespace: argocd
+  # каскадне видалення ресурсів разом із застосунком
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DanilAra7/restaurant-booking-devops.git
+    targetRevision: develop
+    path: deploy/helm/restaurant-booking
+    helm:
+      valueFiles:
+        - values-gitops.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: booking-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # не перезаписувати під час синхронізації поля з ignoreDifferences
+      - RespectIgnoreDifferences=true
+  # Пароль БД і самопідписаний сертифікат чарт генерує, а наявні зберігає через
+  # lookup. ArgoCD рендерить чарт без доступу до кластера (lookup порожній), тож
+  # згенеровані значення відрізнялися б при кожному порівнянні: вони створюються
+  # один раз і далі не порівнюються й не перезаписуються.
+  ignoreDifferences:
+    - kind: Secret
+      name: booking-db-auth
+      jsonPointers: [/data, /stringData]
+    - kind: Secret
+      name: booking-gitops-tls
+      jsonPointers: [/data]
