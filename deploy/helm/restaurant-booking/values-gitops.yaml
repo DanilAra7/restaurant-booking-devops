@@ -2,7 +2,7 @@
 # гілкою develop і застосовує чарт із цими значеннями. Зміна цього файлу в Git —
 # єдиний спосіб змінити середовище: ручні зміни в кластері ArgoCD повертає (selfHeal).
 bookingService:
-  replicaCount: 1
+  replicaCount: 2
   autoscaling:
     enabled: false
 frontend:
